@@ -40,7 +40,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Play / pause | **Play** button or <kbd>Space</kbd> |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
 | Force field −∇Ψ (arrows) | Toolbar toggle or <kbd>F</kbd> |
-| Image → Ψ | **Drop an image** anywhere, or Scene menu → *Import image…* (<kbd>I</kbd>) |
+| Image → Ψ | **Drop an image on the left half** of the window, or Scene menu → *Image → Ψ…* (<kbd>I</kbd>) |
+| Image → particles | **Drop an image on the right half**, or Scene menu → *Image → particles…* (<kbd>Shift</kbd>+<kbd>I</kbd>) |
 | Live camera → Ψ | Camera button in the toolbar (<kbd>V</kbd>); click again to stop and keep the last frame |
 | Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
@@ -75,6 +76,13 @@ per-frame cost stays at a few milliseconds. The contrast levels are smoothed ove
 stretched below a minimum span, so automatic exposure does not make the landscape flicker and
 sensor noise in dark scenes does not turn into deep valleys. Stopping the camera keeps the last
 frame. Video never leaves the browser.
+
+**Images as particles.** Dropped on the right half of the window, an image replaces the particles
+instead: 2000 particles are placed so that their density follows the same contrast-stretched
+darkness that would otherwise become Ψ. The expected count per pixel is quantised with serpentine
+Floyd–Steinberg error diffusion, as in halftone printing, so every region receives its share to
+within one particle and the particles are spread evenly instead of clumping like independent
+random samples. Ψ stays as it is, so pressing play shows how that picture diffuses and relaxes.
 
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
 behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,

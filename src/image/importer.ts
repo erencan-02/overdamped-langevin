@@ -1,6 +1,8 @@
-import { PSI_CAP } from '../config';
+import { PALETTE, PSI_CAP } from '../config';
 import type { PotentialField } from '../sim/field';
+import { sampleImagePoints } from '../sim/imageParticles';
 import { IMAGE_BLUR_WORLD, imageToPotential } from '../sim/imagePotential';
+import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import type { Camera } from '../view/camera';
 import { type DecodedImage, decodeSource, isImageFile } from './decode';
 import type { WorkerRequest } from './decode.worker';
@@ -9,21 +11,34 @@ import { writePotential } from './writePotential';
 /** The loading overlay stays at least this long so it never just flashes. */
 const MIN_BUSY_MS = 450;
 
+/** What a dropped image turns into. */
+export type ImportTarget = 'potential' | 'particles';
+
 export interface ImporterHooks {
   /** Called when an import starts (e.g. to cancel any tool that is in use). */
-  onStart(): void;
-  /** Called after Ψ was replaced by the image. */
-  onImported(info: { name: string; inverted: boolean }): void;
+  onStart(target: ImportTarget): void;
+  /** Called after Ψ (or the particles) were replaced by the image. */
+  onImported(info: { name: string; inverted: boolean; target: ImportTarget; count: number }): void;
   onError(message: string): void;
 }
+
+const LOADING_TITLE: Record<ImportTarget, string> = {
+  potential: 'Converting image to Ψ…',
+  particles: 'Placing particles…',
+};
+const NO_CONTRAST: Record<ImportTarget, string> = {
+  potential: 'This image has almost no contrast, so it would give a flat Ψ.',
+  particles: 'This image has almost no contrast, so there is nothing to place particles on.',
+};
 
 type WorkerReply =
   | { id: number; ok: true; image: DecodedImage }
   | { id: number; ok: false; error: string };
 
 /**
- * Turns the whole window into a drop zone for images and converts a dropped (or picked) image
- * into Ψ. While an image is being processed, a dimmed overlay with a spinner blocks all input.
+ * Turns the window into two drop zones for images: the left half converts a dropped image into
+ * Ψ, the right half into particles whose density follows the image. While an image is being
+ * processed, a dimmed overlay with a spinner blocks all input.
  */
 export class ImageImporter {
   /** True while an image is being decoded and converted. */
@@ -33,16 +48,29 @@ export class ImageImporter {
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, (r: WorkerReply) => void>();
-  private last: { image: DecodedImage; cx: number; cy: number; name: string; inverted: boolean } | null =
-    null;
+  private last: {
+    image: DecodedImage;
+    cx: number;
+    cy: number;
+    name: string;
+    inverted: boolean;
+    target: ImportTarget;
+  } | null = null;
+  /** Drop zone under the cursor while dragging. */
+  private dragTarget: ImportTarget = 'potential';
+  /** Target of the file picker that is currently open. */
+  private pickerTarget: ImportTarget = 'potential';
 
   private readonly dropOverlay = el('drop-overlay');
+  private readonly dropZones = Array.from(this.dropOverlay.querySelectorAll<HTMLElement>('.drop-zone'));
   private readonly loadingOverlay = el('loading-overlay');
+  private readonly loadingTitle = el('loading-title');
   private readonly loadingName = el('loading-name');
   private readonly fileInput = el('image-input') as HTMLInputElement;
 
   constructor(
     private readonly field: PotentialField,
+    private readonly particles: ParticleSystem,
     private readonly camera: Camera,
     private readonly hooks: ImporterHooks,
   ) {
@@ -53,7 +81,7 @@ export class ImageImporter {
     this.fileInput.addEventListener('change', () => {
       const file = this.fileInput.files?.[0];
       this.fileInput.value = '';
-      if (file) void this.importFile(file);
+      if (file) void this.importFile(file, this.pickerTarget);
     });
     // The loading overlay swallows every pointer, wheel and touch interaction.
     for (const type of ['pointerdown', 'wheel', 'contextmenu', 'touchstart'] as const) {
@@ -61,17 +89,21 @@ export class ImageImporter {
     }
   }
 
-  /** Opens the system file picker. */
-  openPicker(): void {
-    if (!this.busy) this.fileInput.click();
+  /** Opens the system file picker; the chosen image goes to `target`. */
+  openPicker(target: ImportTarget = 'potential'): void {
+    if (this.busy) return;
+    this.pickerTarget = target;
+    this.fileInput.click();
   }
 
   /** Re-applies the last imported image with dark and light swapped. */
   invertLast(): void {
-    if (!this.last || this.busy) return;
-    this.last.inverted = !this.last.inverted;
-    if (this.apply(this.last.image, this.last.cx, this.last.cy, this.last.inverted)) {
-      this.hooks.onImported({ name: this.last.name, inverted: this.last.inverted });
+    const last = this.last;
+    if (!last || this.busy) return;
+    last.inverted = !last.inverted;
+    const count = this.apply(last.image, last.cx, last.cy, last.inverted, last.target);
+    if (count > 0) {
+      this.hooks.onImported({ name: last.name, inverted: last.inverted, target: last.target, count });
     }
   }
 
@@ -81,11 +113,24 @@ export class ImageImporter {
     return Array.from(e.dataTransfer?.types ?? []).includes('Files');
   }
 
+  /** Left half of the window: Ψ; right half: particles. */
+  private targetAt(clientX: number): ImportTarget {
+    return clientX < window.innerWidth / 2 ? 'potential' : 'particles';
+  }
+
+  private highlight(target: ImportTarget): void {
+    this.dragTarget = target;
+    for (const z of this.dropZones) z.classList.toggle('active', z.dataset.target === target);
+  }
+
   private onDragEnter = (e: DragEvent): void => {
     if (!this.hasFiles(e)) return;
     e.preventDefault();
     this.dragDepth++;
-    if (!this.busy) this.dropOverlay.hidden = false;
+    if (!this.busy) {
+      this.highlight(this.targetAt(e.clientX));
+      this.dropOverlay.hidden = false;
+    }
   };
 
   private onDragOver = (e: DragEvent): void => {
@@ -93,6 +138,10 @@ export class ImageImporter {
     // Without preventDefault the browser would open the image in the tab.
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = this.busy ? 'none' : 'copy';
+    if (!this.busy) {
+      const target = this.targetAt(e.clientX);
+      if (target !== this.dragTarget) this.highlight(target);
+    }
   };
 
   private onDragLeave = (e: DragEvent): void => {
@@ -109,20 +158,20 @@ export class ImageImporter {
     if (this.busy) return;
     const files = Array.from(e.dataTransfer?.files ?? []);
     const file = files.find(isImageFile);
-    if (file) void this.importFile(file);
+    if (file) void this.importFile(file, this.targetAt(e.clientX));
     else if (files.length) this.hooks.onError('That file is not an image. Try a PNG, JPEG, WebP, GIF or SVG.');
   };
 
   // ---------------------------------------------------------------- import
 
-  async importFile(file: File): Promise<void> {
+  async importFile(file: File, target: ImportTarget = 'potential'): Promise<void> {
     if (this.busy) return;
     if (!isImageFile(file)) {
       this.hooks.onError('That file is not an image. Try a PNG, JPEG, WebP, GIF or SVG.');
       return;
     }
-    this.setBusy(true, file.name);
-    this.hooks.onStart();
+    this.setBusy(true, file.name, target);
+    this.hooks.onStart(target);
     const started = performance.now();
     // The image goes where the user is looking.
     const cx = this.camera.x;
@@ -131,12 +180,14 @@ export class ImageImporter {
     const req = { viewWidth: b.x1 - b.x0, viewHeight: b.y1 - b.y0, cellSize: this.field.h };
 
     let error: string | null = null;
+    let count = 0;
     try {
       const image = await this.decode(file, req);
-      if (this.apply(image, cx, cy, false)) {
-        this.last = { image, cx, cy, name: file.name, inverted: false };
+      count = this.apply(image, cx, cy, false, target);
+      if (count > 0) {
+        this.last = { image, cx, cy, name: file.name, inverted: false, target };
       } else {
-        error = 'This image has almost no contrast, so it would give a flat Ψ.';
+        error = NO_CONTRAST[target];
       }
     } catch (err) {
       console.error(err);
@@ -147,11 +198,12 @@ export class ImageImporter {
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     this.setBusy(false);
     if (error) this.hooks.onError(error);
-    else this.hooks.onImported({ name: file.name, inverted: false });
+    else this.hooks.onImported({ name: file.name, inverted: false, target, count });
   }
 
-  private setBusy(busy: boolean, name = ''): void {
+  private setBusy(busy: boolean, name = '', target: ImportTarget = 'potential'): void {
     this.busy = busy;
+    this.loadingTitle.textContent = LOADING_TITLE[target];
     this.loadingName.textContent = name;
     this.loadingOverlay.hidden = !busy;
     document.body.classList.toggle('is-busy', busy);
@@ -227,22 +279,49 @@ export class ImageImporter {
   }
 
   /**
-   * Replaces Ψ with the potential of `image`, centred at (cx, cy). Returns false if the image
-   * has no usable contrast.
+   * Applies `image`, centred at (cx, cy), to `target`. Returns how many things changed: 1 for Ψ,
+   * the number of particles placed for particles, 0 if the image has no usable contrast.
    */
-  private apply(image: DecodedImage, cx: number, cy: number, inverted: boolean): boolean {
-    const field = this.field;
-    const h = field.h;
-    const grid = imageToPotential(image, { depth: PSI_CAP, invert: inverted, blur: IMAGE_BLUR_WORLD / h });
-    if (!grid) return false;
-
+  private apply(
+    image: DecodedImage,
+    cx: number,
+    cy: number,
+    inverted: boolean,
+    target: ImportTarget,
+  ): number {
+    const h = this.field.h;
     // One sample per lattice node: pixel (i, j) (rows top to bottom) sits at (x0 + i·h, yTop − j·h).
     const x0 = Math.round((cx - image.worldWidth / 2) / h) * h;
     const yTop = Math.round((cy + image.worldHeight / 2) / h) * h;
-    field.clear();
-    writePotential(field, grid, { x0, yTop, cell: h });
-    this.camera.showRect(x0, yTop - image.worldHeight, x0 + image.worldWidth, yTop);
-    return true;
+    const count = target === 'potential' ? this.applyPotential(image, x0, yTop, inverted) : this.applyParticles(image, x0, yTop, inverted);
+    if (count > 0) this.camera.showRect(x0, yTop - image.worldHeight, x0 + image.worldWidth, yTop);
+    return count;
+  }
+
+  /** Replaces Ψ with the image's potential. */
+  private applyPotential(image: DecodedImage, x0: number, yTop: number, inverted: boolean): number {
+    const h = this.field.h;
+    const grid = imageToPotential(image, { depth: PSI_CAP, invert: inverted, blur: IMAGE_BLUR_WORLD / h });
+    if (!grid) return 0;
+    this.field.clear();
+    writePotential(this.field, grid, { x0, yTop, cell: h });
+    return 1;
+  }
+
+  /**
+   * Replaces all particles with MAX_PARTICLES new ones whose density follows the image
+   * darkness. Ψ is left as it is.
+   */
+  private applyParticles(image: DecodedImage, x0: number, yTop: number, inverted: boolean): number {
+    const h = this.field.h;
+    const pts = sampleImagePoints(image, MAX_PARTICLES, { invert: inverted });
+    if (!pts) return 0;
+    const ps = this.particles;
+    ps.clear();
+    for (let p = 0; p < pts.length; p += 2) {
+      ps.add(x0 + pts[p] * h, yTop - pts[p + 1] * h, Math.floor(Math.random() * PALETTE.length));
+    }
+    return ps.count;
   }
 }
 

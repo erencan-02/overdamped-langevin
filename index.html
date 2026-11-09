@@ -82,7 +82,8 @@
           <button role="menuitem" data-preset="ring"><span class="sw sw-ring"></span>Ring</button>
           <button role="menuitem" data-preset="landscape"><span class="sw sw-rand"></span>Random landscape</button>
           <div class="menu-sep"></div>
-          <button role="menuitem" data-action="import-image">Import image…<kbd>I</kbd></button>
+          <button role="menuitem" data-action="import-image">Image → Ψ…<kbd>I</kbd></button>
+          <button role="menuitem" data-action="import-image-particles">Image → particles…<kbd>⇧I</kbd></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-action="clear-particles">Clear particles<kbd>C</kbd></button>
           <button role="menuitem" data-action="clear-field">Clear potential<kbd>X</kbd></button>
@@ -157,12 +158,19 @@
     <!-- Image import: drop zone, loading overlay, file picker -->
     <input type="file" id="image-input" accept="image/*" hidden />
     <div class="drop-overlay" id="drop-overlay" hidden>
-      <div class="drop-frame">
+      <div class="drop-zone" data-target="potential">
         <div class="drop-icon">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="m4.5 17.5 5-5 3.5 3.5 2.5-2.5 4 4" /></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c5 0 8.5 3.6 8.5 8.2S17 20.5 12 20.5 3.5 16.7 3.5 12 7 3.5 12 3.5z" /><path d="M12 8c2.6 0 4.3 1.7 4.3 4s-1.7 4-4.3 4-4.3-1.8-4.3-4S9.4 8 12 8z" /><circle cx="12" cy="12" r="1.2" class="fill" /></svg>
         </div>
-        <div class="drop-title">Drop an image to turn it into Ψ</div>
-        <div class="drop-sub">Dark areas become valleys, light areas stay flat. Particles will gather on the dark parts.</div>
+        <div class="drop-title">Drop here for Ψ</div>
+        <div class="drop-sub">The image becomes the potential: dark areas turn into valleys, light areas stay flat.</div>
+      </div>
+      <div class="drop-zone" data-target="particles">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="7" r="1.6" class="fill" /><circle cx="12" cy="5.5" r="1.6" class="fill" /><circle cx="17.5" cy="8" r="1.6" class="fill" /><circle cx="9" cy="12" r="1.6" class="fill" /><circle cx="15" cy="12.5" r="1.6" class="fill" /><circle cx="6" cy="17" r="1.6" class="fill" /><circle cx="12" cy="18" r="1.6" class="fill" /><circle cx="18" cy="17" r="1.6" class="fill" /></svg>
+        </div>
+        <div class="drop-title">Drop here for particles</div>
+        <div class="drop-sub">The image becomes particles: they are densest where the image is darkest.</div>
       </div>
     </div>
     <div class="loading-overlay" id="loading-overlay" role="alertdialog" aria-modal="true" aria-busy="true" aria-labelledby="loading-title" hidden>
@@ -210,8 +218,8 @@
           <section>
             <h3>Images</h3>
             <ul>
-              <li><b>Drop an image</b> anywhere to turn it into Ψ</li>
-              <li>Dark areas become valleys, light areas stay flat</li>
+              <li><b>Drop an image on the left half</b> to turn it into Ψ: dark areas become valleys</li>
+              <li><b>Drop it on the right half</b> to turn it into particles, densest where it is darkest</li>
               <li>Light drawing on dark? Use <b>Invert</b> afterwards</li>
               <li>The <b>camera button</b> turns your front camera into a live Ψ</li>
             </ul>
@@ -231,7 +239,7 @@
               <li><kbd>B</kbd> Brush · <kbd>P</kbd> Particles</li>
               <li><kbd>G</kbd> Grid · <kbd>T</kbd> Trails · <kbd>L</kbd> Contours</li>
               <li><kbd>F</kbd> Force field −∇Ψ</li>
-              <li><kbd>I</kbd> Import an image as Ψ</li>
+              <li><kbd>I</kbd> Image → Ψ · <kbd>⇧</kbd><kbd>I</kbd> Image → particles</li>
               <li><kbd>V</kbd> Live camera as Ψ</li>
               <li><kbd>S</kbd> Switch numerical scheme</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>

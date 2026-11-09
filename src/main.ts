@@ -91,8 +91,8 @@ function main(): void {
     resetView() {
       camera.reset();
     },
-    importImage() {
-      importer.openPicker();
+    importImage(target) {
+      importer.openPicker(target);
     },
     preset(name: string) {
       liveCamera.stop();
@@ -133,17 +133,22 @@ function main(): void {
     },
   );
 
-  const importer = new ImageImporter(field, camera, {
-    onStart: () => {
-      liveCamera.stop(); // a dropped image replaces the live potential
+  const importer = new ImageImporter(field, particles, camera, {
+    onStart: (target) => {
+      if (target === 'potential') liveCamera.stop(); // a dropped image replaces the live potential
       input.cancel();
       controls.closeOverlays();
     },
-    onImported: ({ inverted }) => {
-      controls.showToast(inverted ? 'Image inverted: light areas are now valleys' : 'Image converted to Ψ', {
-        label: 'Invert',
-        run: () => importer.invertLast(),
-      });
+    onImported: ({ inverted, target, count }) => {
+      const text =
+        target === 'potential'
+          ? inverted
+            ? 'Image inverted: light areas are now valleys'
+            : 'Image converted to Ψ'
+          : inverted
+            ? `${count} particles placed on the light areas`
+            : `Image converted to ${count} particles`;
+      controls.showToast(text, { label: 'Invert', run: () => importer.invertLast() });
     },
     onError: (message) => controls.showToast(message),
   });
@@ -186,7 +191,7 @@ function main(): void {
         break;
       case 'i':
       case 'I':
-        actions.importImage();
+        actions.importImage(e.shiftKey ? 'particles' : 'potential');
         break;
       case 'v':
       case 'V':

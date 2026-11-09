@@ -20,7 +20,7 @@ export interface ControlActions {
   clearParticles(): void;
   clearField(): void;
   resetView(): void;
-  importImage(): void;
+  importImage(target: 'potential' | 'particles'): void;
   preset(name: string): void;
 }
 
@@ -84,7 +84,8 @@ export class Controls {
       else if (b.dataset.action === 'clear-particles') actions.clearParticles();
       else if (b.dataset.action === 'clear-field') actions.clearField();
       else if (b.dataset.action === 'reset-view') actions.resetView();
-      else if (b.dataset.action === 'import-image') actions.importImage();
+      else if (b.dataset.action === 'import-image') actions.importImage('potential');
+      else if (b.dataset.action === 'import-image-particles') actions.importImage('particles');
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {
