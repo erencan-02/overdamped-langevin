@@ -84,6 +84,17 @@ Floyd–Steinberg error diffusion, as in halftone printing, so every region rece
 within one particle and the particles are spread evenly instead of clumping like independent
 random samples. Ψ stays as it is, so pressing play shows how that picture diffuses and relaxes.
 
+**Distance to equilibrium.** The window above the settings plots, over simulated time,
+$\mathrm{KL}(\hat\rho_h \,\|\, \pi)$ between the particles' empirical measure smoothed with a Gaussian kernel,
+$\hat\rho_h = \tfrac1N \sum_i \delta_{X_i} * \mathcal N(0, h^2 I)$ (the kernel variance $h^2$ is adjustable), and the
+Gibbs measure $\pi \propto e^{-2\Psi/\sigma^2}$. Because $\pi$ is not normalisable on the whole plane (Ψ = 0 wherever
+nothing is painted), both are restricted to the dashed analysis box and renormalised there; *Fit box to view*
+moves the box. The estimate is a binned KDE: cloud-in-cell deposit of the particles on a grid of 64–256 cells
+(≈ 1.5 cells per kernel std), a separable Gaussian blur, and a midpoint sum for the integral, recomputed ten
+times per second while the window is open; π is only recomputed when Ψ, σ or the box change. The dashed line
+is $\mathrm{KL}(\pi * K_h \,\|\, \pi)$, the value that perfect sampling approaches as $N \to \infty$, so
+the curve should level off at or slightly above it (the excess is the finite-N noise).
+
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
 behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,
 even while the simulation is running:

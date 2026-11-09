@@ -96,43 +96,71 @@
     </div>
 
     <!-- Parameters -->
-    <div class="panel card" id="panel">
-      <label class="field">
-        <span class="field-head"><span>Diffusivity <i class="math">σ</i></span><output id="sigma-out"></output></span>
-        <input type="range" id="sigma" min="0" max="1" step="0.001" />
-      </label>
-      <label class="field">
-        <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
-        <input type="range" id="speed" min="0" max="1" step="0.001" />
-      </label>
-      <div class="field">
-        <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
-        <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
-          <button role="radio" data-scheme="heun">Heun</button>
-          <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+    <div class="left-col">
+      <!-- Distance to equilibrium -->
+      <section class="analysis card" id="analysis" aria-label="Distance to equilibrium">
+        <button class="analysis-head" id="analysis-toggle" type="button" aria-expanded="true" aria-controls="analysis-body">
+          <span class="analysis-title">KL to equilibrium</span>
+          <output id="kl-value"></output>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="analysis-body" id="analysis-body">
+          <div class="kl-caption">KL(ρ̂<sub>h</sub> ‖ π) inside the dashed box, over simulated time</div>
+          <canvas id="kl-plot" aria-label="KL divergence over time"></canvas>
+          <div class="kl-legend">
+            <span><i class="lg-line"></i>particles ∗ kernel vs Gibbs</span>
+            <span><i class="lg-dash"></i>smoothing floor</span>
+          </div>
+          <label class="field">
+            <span class="field-head"><span>Kernel variance h²</span><output id="kernel-var-out"></output></span>
+            <input type="range" id="kernel-var" min="0" max="1" step="0.001" />
+          </label>
+          <div class="kl-info" id="kl-info"></div>
+          <div class="kl-actions">
+            <button class="ghost-btn" id="kl-fit" type="button">Fit box to view</button>
+            <button class="ghost-btn" id="kl-reset" type="button">Reset plot</button>
+          </div>
         </div>
-        <span class="field-note" id="scheme-note"></span>
-      </div>
-      <div class="mode-only" data-for="brush">
-        <div class="panel-sep"></div>
+      </section>
+
+      <div class="panel card" id="panel">
         <label class="field">
-          <span class="field-head"><span>Brush size</span><output id="brush-size-out"></output></span>
-          <input type="range" id="brush-size" min="0" max="1" step="0.001" />
+          <span class="field-head"><span>Diffusivity <i class="math">σ</i></span><output id="sigma-out"></output></span>
+          <input type="range" id="sigma" min="0" max="1" step="0.001" />
         </label>
         <label class="field">
-          <span class="field-head"><span>Brush strength</span><output id="brush-strength-out"></output></span>
-          <input type="range" id="brush-strength" min="0" max="1" step="0.001" />
+          <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
+          <input type="range" id="speed" min="0" max="1" step="0.001" />
         </label>
-      </div>
-      <div class="mode-only" data-for="particles">
-        <div class="panel-sep"></div>
-        <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
-        <label class="field">
-          <span class="field-head"><span>Grid spacing</span><output id="grid-spacing-out"></output></span>
-          <input type="range" id="grid-spacing" min="0" max="1" step="0.001" />
-          <span class="field-note">Right-drag a rectangle to fill it with particles at this spacing.</span>
-        </label>
-        <button id="clear-particles" class="ghost-btn">Clear particles</button>
+        <div class="field">
+          <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
+          <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
+            <button role="radio" data-scheme="heun">Heun</button>
+            <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+          </div>
+          <span class="field-note" id="scheme-note"></span>
+        </div>
+        <div class="mode-only" data-for="brush">
+          <div class="panel-sep"></div>
+          <label class="field">
+            <span class="field-head"><span>Brush size</span><output id="brush-size-out"></output></span>
+            <input type="range" id="brush-size" min="0" max="1" step="0.001" />
+          </label>
+          <label class="field">
+            <span class="field-head"><span>Brush strength</span><output id="brush-strength-out"></output></span>
+            <input type="range" id="brush-strength" min="0" max="1" step="0.001" />
+          </label>
+        </div>
+        <div class="mode-only" data-for="particles">
+          <div class="panel-sep"></div>
+          <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
+          <label class="field">
+            <span class="field-head"><span>Grid spacing</span><output id="grid-spacing-out"></output></span>
+            <input type="range" id="grid-spacing" min="0" max="1" step="0.001" />
+            <span class="field-note">Right-drag a rectangle to fill it with particles at this spacing.</span>
+          </label>
+          <button id="clear-particles" class="ghost-btn">Clear particles</button>
+        </div>
       </div>
     </div>
 

@@ -119,6 +119,14 @@ export class Controls {
       format: (v) => `${v < 1 ? v.toFixed(2) : v.toFixed(1)}×`,
     });
     this.addSlider({
+      id: 'kernel-var',
+      range: RANGES.kernelVariance,
+      log: true,
+      get: () => s.kernelVariance,
+      set: (v) => (s.kernelVariance = v),
+      format: (v) => v.toFixed(v < 0.1 ? 3 : 2),
+    });
+    this.addSlider({
       id: 'grid-spacing',
       range: RANGES.particleSpacing,
       log: true,

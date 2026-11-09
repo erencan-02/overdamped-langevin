@@ -24,6 +24,8 @@ export interface AppState {
   brushStrength: number;
   /** Distance between particles spawned on a grid with a right-drag (world units). */
   particleSpacing: number;
+  /** Variance h² of the Gaussian kernel that smooths the empirical measure (world units²). */
+  kernelVariance: number;
 }
 
 export function initialState(): AppState {
@@ -40,5 +42,6 @@ export function initialState(): AppState {
     brushRadius: DEFAULTS.brushRadius,
     brushStrength: DEFAULTS.brushStrength,
     particleSpacing: DEFAULTS.particleSpacing,
+    kernelVariance: DEFAULTS.kernelVariance,
   };
 }

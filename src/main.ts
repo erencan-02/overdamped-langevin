@@ -7,7 +7,9 @@ import { applyPreset, type PresetName } from './sim/presets';
 import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
+import { KlPanel } from './ui/klPanel';
 import { InputController } from './ui/input';
+import { EquilibriumMonitor } from './analysis/equilibrium';
 import { ImageImporter } from './image/importer';
 import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
@@ -100,6 +102,15 @@ function main(): void {
     },
   };
   const controls = new Controls(state, actions);
+
+  // Distance to equilibrium: KL between the kernel-smoothed particles and the Gibbs measure.
+  const monitor = new EquilibriumMonitor(field, particles);
+  const klPanel = new KlPanel(monitor, {
+    fitBox: () => {
+      monitor.setBox(camera.bounds());
+      klPanel.draw();
+    },
+  });
 
   input.onGridSpawned = (spawned, requested) => {
     if (spawned < requested) {
@@ -247,6 +258,7 @@ function main(): void {
   new ResizeObserver(resize).observe(stage);
   window.addEventListener('resize', resize);
   resize();
+  monitor.setBox(camera.bounds()); // the analysis box starts as the initial view
   document.fonts?.ready.then(() => controls.sync());
 
   // WebGL context loss (GPU reset, driver update, …): rebuild the renderer when restored.
@@ -302,7 +314,10 @@ function main(): void {
       nextColor: PALETTE[input.nextColor],
       panning: input.panning,
       selection: input.selection,
+      analysisBox: monitor.enabled ? monitor.region : null,
     });
+
+    if (monitor.update(now, state.sigma, state.kernelVariance)) klPanel.draw();
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
@@ -325,6 +340,7 @@ function main(): void {
       particles,
       camera,
       liveCamera,
+      monitor,
       get renderer() {
         return renderer;
       },

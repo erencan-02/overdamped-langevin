@@ -14,6 +14,8 @@ export interface OverlayState {
   panning: boolean;
   /** Right-drag spawn rectangle in progress, if any. */
   selection: GridSelection | null;
+  /** Region of the equilibrium analysis (world units), drawn as a dashed box. */
+  analysisBox: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
 /** Preview dots are drawn only if there are at most this many and they are this far apart. */
@@ -54,6 +56,7 @@ export class Overlay {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
     if (s.grid) this.drawLabels(cam);
+    if (s.analysisBox) this.drawAnalysisBox(cam, s.analysisBox);
     if (s.selection) {
       this.drawSelection(cam, s.selection);
       return;
@@ -141,6 +144,26 @@ export class Overlay {
       ctx.arc(x, y, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  private drawAnalysisBox(cam: Camera, b: { x0: number; y0: number; x1: number; y1: number }): void {
+    const ctx = this.ctx;
+    const x0 = Math.round(cam.toScreenX(b.x0)) + 0.5;
+    const x1 = Math.round(cam.toScreenX(b.x1)) + 0.5;
+    const y0 = Math.round(cam.toScreenY(b.y1)) + 0.5;
+    const y1 = Math.round(cam.toScreenY(b.y0)) + 0.5;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = 'rgba(58, 155, 220, 0.75)';
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.setLineDash([]);
+    ctx.font = '600 10px Inter, ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(58, 155, 220, 0.9)';
+    ctx.fillText('KL box', clamp(x0 + 5, 4, this.w - 50), clamp(y0 + 4, 4, this.h - 14));
     ctx.restore();
   }
 

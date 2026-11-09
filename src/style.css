@@ -387,11 +387,23 @@ kbd {
 
 /* ------------------------------------------------------------------ panel */
 
-.panel {
+.left-col {
   position: fixed;
   left: var(--gutter);
   bottom: var(--gutter);
   width: 240px;
+  max-height: calc(100vh - 2 * var(--gutter) - 72px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.left-col::-webkit-scrollbar {
+  display: none;
+}
+.panel {
+  flex: none;
   padding: 14px 16px 12px;
   display: flex;
   flex-direction: column;
@@ -530,6 +542,112 @@ input[type='range']:active::-webkit-slider-thumb {
   font-size: 11px;
   line-height: 1.4;
   color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------------ distance to equilibrium */
+
+.analysis {
+  flex: none;
+  padding: 4px 6px 10px;
+}
+.analysis.collapsed {
+  padding-bottom: 4px;
+}
+.analysis-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.analysis-head:hover {
+  background: var(--hover);
+}
+.analysis-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.analysis-head output {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.analysis-head .chev {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  transition: transform 0.15s;
+}
+.analysis.collapsed .chev {
+  transform: rotate(-90deg);
+}
+.analysis-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px;
+}
+.analysis-body[hidden] {
+  display: none;
+}
+.kl-caption {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+#kl-plot {
+  display: block;
+  width: 100%;
+  height: 112px;
+  border-radius: 8px;
+  background: #f8fafc;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.kl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.kl-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.lg-line {
+  border-top: 2px solid var(--ink);
+}
+.lg-dash {
+  border-top: 2px dashed #3a9bdc;
+}
+.kl-info {
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.kl-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.kl-actions .ghost-btn {
+  height: 28px;
+  font-size: 12px;
 }
 
 /* ------------------------------------------------------------------ legend */
@@ -1025,7 +1143,7 @@ body.is-busy .stage {
   .legend {
     display: none;
   }
-  .panel {
+  .left-col {
     width: auto;
     right: var(--gutter);
   }
