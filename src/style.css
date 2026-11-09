@@ -484,6 +484,49 @@ input[type='range']:active::-webkit-slider-thumb {
   transform: scale(1.12);
 }
 
+.field-head kbd {
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 5px;
+  min-width: 0;
+}
+.mini-seg {
+  display: grid;
+  grid-template-columns: 1fr 1.45fr;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.05);
+}
+.mini-seg button {
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+}
+.mini-seg button:hover {
+  color: var(--ink);
+}
+.mini-seg button[aria-checked='true'] {
+  background: var(--surface-solid);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1), 0 1px 5px rgba(15, 23, 42, 0.06);
+}
+.field-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
 /* ------------------------------------------------------------------ legend */
 
 .legend {

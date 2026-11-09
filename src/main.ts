@@ -4,6 +4,7 @@ import { Renderer } from './render/renderer';
 import { PotentialField } from './sim/field';
 import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES, ParticleSystem } from './sim/particles';
 import { applyPreset, type PresetName } from './sim/presets';
+import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { InputController } from './ui/input';
@@ -26,6 +27,7 @@ function main(): void {
   const state = initialState();
   const field = new PotentialField({ cellSize: CELL_SIZE, cap: PSI_CAP });
   const particles = new ParticleSystem();
+  particles.scheme = SCHEMES[state.scheme];
   const camera = new Camera();
 
   let renderer: Renderer;
@@ -43,6 +45,13 @@ function main(): void {
     setMode(mode: Mode) {
       state.mode = mode;
       controls.sync();
+    },
+    setScheme(id: SchemeId) {
+      if (id === state.scheme) return;
+      state.scheme = id;
+      particles.scheme = SCHEMES[id];
+      controls.sync();
+      controls.showToast(`Scheme: ${SCHEMES[id].name}`);
     },
     togglePlay() {
       state.playing = !state.playing;
@@ -103,6 +112,10 @@ function main(): void {
       case 'p':
       case 'P':
         actions.setMode('particles');
+        break;
+      case 's':
+      case 'S':
+        actions.setScheme(state.scheme === 'heun' ? 'euler-maruyama' : 'heun');
         break;
       case 'g':
       case 'G':

@@ -1,4 +1,5 @@
 import { DEFAULTS } from './config';
+import { DEFAULT_SCHEME, type SchemeId } from './sim/schemes';
 
 export type Mode = 'brush' | 'particles';
 
@@ -13,6 +14,8 @@ export interface AppState {
   sigma: number;
   /** Simulated time per real second. */
   speed: number;
+  /** Numerical scheme used to integrate the SDE. */
+  scheme: SchemeId;
   /** Standard deviation of the Gaussian brush (world units). */
   brushRadius: number;
   /** Rate at which the brush changes Ψ at its centre (Ψ units per second). */
@@ -28,6 +31,7 @@ export function initialState(): AppState {
     contours: true,
     sigma: DEFAULTS.sigma,
     speed: DEFAULTS.speed,
+    scheme: DEFAULT_SCHEME,
     brushRadius: DEFAULTS.brushRadius,
     brushStrength: DEFAULTS.brushStrength,
   };

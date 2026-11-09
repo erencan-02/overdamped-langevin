@@ -95,6 +95,14 @@
         <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
         <input type="range" id="speed" min="0" max="1" step="0.001" />
       </label>
+      <div class="field">
+        <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
+        <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
+          <button role="radio" data-scheme="heun">Heun</button>
+          <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+        </div>
+        <span class="field-note" id="scheme-note"></span>
+      </div>
       <div class="mode-only" data-for="brush">
         <div class="panel-sep"></div>
         <label class="field">
@@ -171,16 +179,21 @@
               <li><kbd>Space</kbd> Play / pause</li>
               <li><kbd>B</kbd> Brush · <kbd>P</kbd> Particles</li>
               <li><kbd>G</kbd> Grid · <kbd>T</kbd> Trails · <kbd>L</kbd> Contours</li>
+              <li><kbd>S</kbd> Switch numerical scheme</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
               <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>
             </ul>
           </section>
         </div>
         <p class="fineprint">
-          Integrated with the stochastic Heun scheme (strong order 1 for additive noise) using sub-steps of
-          2&nbsp;ms of simulated time (up to 10&nbsp;ms when thousands of particles have to share the frame budget).
-          Ψ lives on a grid with spacing h = 0.04; its gradient is computed with central differences and interpolated
-          continuously between grid nodes.
+          <b>Numerical schemes.</b> <i>Euler–Maruyama</i>: X<sub>n+1</sub> = X<sub>n</sub> − ∇Ψ(X<sub>n</sub>)Δt + σΔW,
+          one force evaluation per step. <i>Stochastic Heun</i>: an Euler–Maruyama predictor X̃ followed by
+          X<sub>n+1</sub> = X<sub>n</sub> − ½[∇Ψ(X<sub>n</sub>) + ∇Ψ(X̃)]Δt + σΔW with the same ΔW, two force
+          evaluations per step. With additive noise both have strong order 1, but Heun is second order in the
+          drift (and reported weak order 2), so it is noticeably more accurate where the force dominates.
+          Sub-steps are 2&nbsp;ms of simulated time (up to 10&nbsp;ms when thousands of particles share the frame
+          budget). Ψ lives on a grid with spacing h = 0.04; its gradient uses central differences and is
+          interpolated continuously between grid nodes.
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { COLORMAP, PSI_CAP, RANGES } from '../config';
+import { SCHEMES, type SchemeId } from '../sim/schemes';
 import type { AppState, Mode } from '../state';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -9,6 +10,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 
 export interface ControlActions {
   setMode(mode: Mode): void;
+  setScheme(id: SchemeId): void;
   togglePlay(): void;
   toggleGrid(): void;
   toggleTrails(): void;
@@ -42,6 +44,10 @@ export class Controls {
   private readonly particleCount = $('particle-count');
   private readonly segButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.seg-btn'));
   private readonly segThumb = document.querySelector<HTMLElement>('.seg-thumb')!;
+  private readonly schemeButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-scheme]'),
+  );
+  private readonly schemeNote = $('scheme-note');
   private readonly sliders: { spec: SliderSpec; input: HTMLInputElement; out: HTMLOutputElement }[] = [];
   private toastTimer = 0;
 
@@ -51,6 +57,9 @@ export class Controls {
   ) {
     for (const b of this.segButtons) {
       b.addEventListener('click', () => actions.setMode(b.dataset.mode as Mode));
+    }
+    for (const b of this.schemeButtons) {
+      b.addEventListener('click', () => actions.setScheme(b.dataset.scheme as SchemeId));
     }
     this.play.addEventListener('click', () => actions.togglePlay());
     $('toggle-grid').addEventListener('click', () => actions.toggleGrid());
@@ -207,6 +216,10 @@ export class Controls {
     $('toggle-grid').setAttribute('aria-pressed', String(s.grid));
     $('toggle-trails').setAttribute('aria-pressed', String(s.trails));
     $('toggle-contours').setAttribute('aria-pressed', String(s.contours));
+    for (const b of this.schemeButtons) {
+      b.setAttribute('aria-checked', String(b.dataset.scheme === s.scheme));
+    }
+    this.schemeNote.textContent = SCHEMES[s.scheme].summary;
     for (const sl of this.sliders) this.syncSlider(sl);
     this.updateHint();
   }

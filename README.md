@@ -26,9 +26,10 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
+| Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
 
-The panel at the bottom left sets the diffusivity σ, the simulation speed and the brush size
+The panel at the bottom left sets the diffusivity σ, the simulation speed, the numerical scheme and the brush size
 (standard deviation of the Gaussian brush) and strength (rate of change of Ψ at the brush centre).
 $|\Psi|$ is capped at 5.
 
@@ -40,18 +41,24 @@ The brush adds a Gaussian bump $A\,e^{-r^2/2s^2}$ and clamps the result to $[-5,
 gradient is kept up to date with second-order central differences and bilinearly interpolated,
 which gives a continuous drift field with $O(h^2)$ error.
 
-**Integrator.** Particles are advanced with the stochastic Heun (predictor–corrector) scheme
+**Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
+behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,
+even while the simulation is running:
 
-$$
-\tilde X = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W,\qquad
-X_{n+1} = X_n - \tfrac12\big[\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\big]\Delta t + \sigma\,\Delta W ,
-$$
+| | Update | Force evaluations / step |
+| --- | --- | --- |
+| **Euler–Maruyama** | $X_{n+1} = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W$ | 1 |
+| **Stochastic Heun** (default) | $\tilde X = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W$, then $X_{n+1} = X_n - \tfrac12\big[\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\big]\Delta t + \sigma\,\Delta W$ | 2 |
 
-which for additive noise has strong order 1 (Euler–Maruyama has 1/2) and weak order 2. Sub-steps are
-at most 2 ms of simulated time. If thousands of particles would overrun the frame, the step grows up
-to a hard limit of 10 ms, and past that the simulation slows down rather than losing accuracy. The
-work budget adapts to the measured speed of the device. Gaussian increments come from a ziggurat
-sampler on a seedable xoshiro128** generator.
+with $\Delta W \sim \mathcal N(0, \Delta t\, I)$, the same increment in both Heun stages. Because the noise
+is additive (σ is constant), **both schemes have strong order 1**. The difference is in the drift:
+Euler–Maruyama is first order there, while Heun is second order (and is reported to have weak
+order 2 for additive noise). Heun is therefore much more accurate where the force dominates the
+noise, at twice the cost per step. Sub-steps are at most 2 ms of simulated time. If thousands of
+particles would overrun the frame, the step grows up to a hard limit of 10 ms, and past that the
+simulation slows down rather than losing accuracy. The work budget is counted in force evaluations
+and adapts to the measured speed of the device, so Euler–Maruyama automatically gets twice as many
+sub-steps. Gaussian increments come from a ziggurat sampler on a seedable xoshiro128** generator.
 
 **Rendering.** WebGL2 throughout: one half-float texture per chunk (with a shared border row/column
 for seamless bilinear filtering) coloured by a diverging colormap with optional iso-contours, a
@@ -61,7 +68,9 @@ the GPU. Only the newly recorded column is uploaded each frame.
 **Tests.** `npm test` checks the field discretisation against analytic Gaussians, the normal
 sampler's moments and tails, free Brownian motion ($\mathrm{Var}\,X_t=\sigma^2 t$), the exact
 deterministic gradient flow, and relaxation to the Gibbs distribution of an Ornstein–Uhlenbeck
-process ($\mathrm{Var}=\sigma^2/2k$).
+process ($\mathrm{Var}=\sigma^2/2k$). For the schemes, it measures the convergence order in the
+drift (halving Δt divides the error by 2 for Euler–Maruyama and by 4 for Heun) and checks that each
+scheme reproduces its own exact discrete stationary variance for the OU process.
 
 ## Development
 
@@ -80,7 +89,8 @@ Pushing to `main` builds, tests and deploys the site to GitHub Pages through
 ```
 src/
   sim/field.ts        chunked potential grid, brush, gradient
-  sim/particles.ts    particle ensemble + stochastic Heun integrator
+  sim/particles.ts    particle ensemble: state, sub-stepping, trails
+  sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler
   sim/presets.ts      ready-made landscapes
   render/             WebGL2 renderer and shaders
