@@ -167,7 +167,7 @@ function main(): void {
 
   const SIM_MS_PER_FRAME = 7;
   let workBudget = DEFAULT_WORK_BUDGET;
-  let nsPerStep = 250;
+  let nsPerEval = 125;
   let last = performance.now();
   const frame = (now: number) => {
     // Clamp the real-time step so a background tab or a hiccup never causes a huge jump.
@@ -176,15 +176,15 @@ function main(): void {
 
     input.update(dt);
     if (state.playing && particles.count > 0) {
-      // Adapt the per-frame work budget to the measured cost of one particle-step so the
-      // simulation never takes more than ~SIM_MS_PER_FRAME, whatever the device.
+      // Adapt the per-frame work budget to the measured cost of one drift evaluation so the
+      // simulation never takes more than ~SIM_MS_PER_FRAME, whatever the device or scheme.
       const t0 = performance.now();
       particles.advance(field, dt * state.speed, state.sigma, DEFAULT_DT_MAX, workBudget);
       const elapsed = performance.now() - t0;
-      const work = particles.count * particles.lastSubsteps;
-      if (work > 500 && elapsed > 0) {
-        nsPerStep = 0.9 * nsPerStep + 0.1 * ((elapsed * 1e6) / work);
-        workBudget = Math.max(4000, Math.min(400_000, (SIM_MS_PER_FRAME * 1e6) / nsPerStep));
+      const work = particles.lastWork;
+      if (work > 1000 && elapsed > 0) {
+        nsPerEval = 0.9 * nsPerEval + 0.1 * ((elapsed * 1e6) / work);
+        workBudget = Math.max(8000, Math.min(800_000, (SIM_MS_PER_FRAME * 1e6) / nsPerEval));
       }
     }
 

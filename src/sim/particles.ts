@@ -1,5 +1,5 @@
-import type { PotentialField } from './field';
 import { Rng } from './rng';
+import { DEFAULT_SCHEME, type DriftField, SCHEMES, type Scheme } from './schemes';
 
 export const MAX_PARTICLES = 2000;
 /** Number of stored trail points per particle. */
@@ -16,24 +16,20 @@ export const DT_LIMIT = 1 / 100;
 /** Upper bound on sub-steps per frame so a frame can never stall the UI. */
 const MAX_SUBSTEPS = 160;
 /**
- * Upper bound on particle-steps per `advance` call. With very many particles at high speed the
- * step size grows beyond dtMax instead of stalling the frame (the scheme stays stable for
- * Δt·max|∇²Ψ| < 2, which holds by a wide margin for the brush sizes the UI allows).
+ * Upper bound on drift evaluations per `advance` call. With very many particles at high speed
+ * the step size grows beyond dtMax (up to DT_LIMIT) instead of stalling the frame. Both schemes
+ * stay stable for Δt·max|∇²Ψ| < 2, which holds by a wide margin for the brush sizes the UI allows.
  */
-export const DEFAULT_WORK_BUDGET = 40_000;
+export const DEFAULT_WORK_BUDGET = 80_000;
 
 /**
  * Ensemble of independent particles following the overdamped Langevin SDE
  *
  *     dX_t = −∇Ψ(X_t) dt + σ dW_t ,   X_t ∈ ℝ²
  *
- * integrated with the stochastic Heun (predictor–corrector) scheme. Because the noise is
- * additive, this scheme has strong order 1 and weak order 2, compared to strong order 1/2 for
- * Euler–Maruyama, at the cost of one extra drift evaluation per step:
- *
- *     ΔW  ~ N(0, Δt·I)
- *     X̃   = Xₙ − ∇Ψ(Xₙ) Δt + σ ΔW
- *     Xₙ₊₁ = Xₙ − ½[∇Ψ(Xₙ) + ∇Ψ(X̃)] Δt + σ ΔW
+ * The particle system owns the state (positions, colours, trails) and the time stepping
+ * (sub-steps, work budget, trail recording); the numerical scheme that performs a single step
+ * is pluggable (see `schemes.ts`) and can be switched at any time.
  */
 export class ParticleSystem {
   readonly x = new Float64Array(MAX_PARTICLES);
@@ -60,11 +56,17 @@ export class ParticleSystem {
   /** Incremented whenever positions or membership change (lets the renderer skip uploads). */
   version = 0;
 
-  private trailClock = 0;
-  private readonly g0 = new Float64Array(2);
-  private readonly g1 = new Float64Array(2);
+  /** Numerical scheme used by `step` and `advance`. */
+  scheme: Scheme;
 
-  constructor(readonly rng: Rng = new Rng()) {}
+  private trailClock = 0;
+
+  constructor(
+    readonly rng: Rng = new Rng(),
+    scheme: Scheme = SCHEMES[DEFAULT_SCHEME],
+  ) {
+    this.scheme = scheme;
+  }
 
   get full(): boolean {
     return this.count >= MAX_PARTICLES;
@@ -126,18 +128,19 @@ export class ParticleSystem {
 
   /**
    * Advances the ensemble by simulated time T using sub-steps no longer than dtMax, doing at
-   * most `workBudget` particle-steps. Returns the simulated time actually advanced (less than T
-   * only if the budget would force steps above DT_LIMIT).
+   * most `workBudget` drift evaluations. Returns the simulated time actually advanced (less
+   * than T only if the budget would force steps above DT_LIMIT).
    */
   advance(
-    field: PotentialField,
+    field: DriftField,
     T: number,
     sigma: number,
     dtMax = DEFAULT_DT_MAX,
     workBudget = DEFAULT_WORK_BUDGET,
   ): number {
     if (!(T > 0)) return 0;
-    const affordable = Math.floor(workBudget / Math.max(1, this.count));
+    const costPerStep = Math.max(1, this.count) * this.scheme.driftEvals;
+    const affordable = Math.floor(workBudget / costPerStep);
     const n = Math.max(1, Math.min(MAX_SUBSTEPS, affordable, Math.ceil(T / dtMax)));
     if (T / n > DT_LIMIT) T = n * DT_LIMIT;
     const dt = T / n;
@@ -158,32 +161,14 @@ export class ParticleSystem {
   /** Number of sub-steps taken by the last `advance` call. */
   lastSubsteps = 0;
 
-  /** One stochastic Heun step of size dt for every particle. */
-  step(field: PotentialField, dt: number, sigma: number): void {
-    const { x, y, rng, g0, g1 } = this;
-    const noise = sigma * Math.sqrt(dt);
-    const halfDt = 0.5 * dt;
-    for (let i = 0, n = this.count; i < n; i++) {
-      const xi = x[i];
-      const yi = y[i];
-      let wx = 0;
-      let wy = 0;
-      if (noise > 0) {
-        wx = noise * rng.normal();
-        wy = noise * rng.normal();
-      }
-      field.gradient(xi, yi, g0);
-      const px = xi - g0[0] * dt + wx;
-      const py = yi - g0[1] * dt + wy;
-      field.gradient(px, py, g1);
-      const nx = xi - (g0[0] + g1[0]) * halfDt + wx;
-      const ny = yi - (g0[1] + g1[1]) * halfDt + wy;
-      // Guard against non-finite values (cannot happen for finite Ψ, but never lose a particle).
-      if (Number.isFinite(nx) && Number.isFinite(ny)) {
-        x[i] = nx;
-        y[i] = ny;
-      }
-    }
+  /** Drift evaluations performed by the last `advance` call (for adaptive work budgets). */
+  get lastWork(): number {
+    return this.lastSubsteps * this.count * this.scheme.driftEvals;
+  }
+
+  /** One step of size dt for every particle, using the current scheme. */
+  step(field: DriftField, dt: number, sigma: number): void {
+    this.scheme.step(this, field, dt, sigma, this.rng);
     this.version++;
   }
 
