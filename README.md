@@ -11,7 +11,7 @@ particles away, valleys (cool colours, $\Psi<0$) attract them, and Brownian nois
 $\sigma$ shakes them around. Everything can be changed while the simulation is running.
 
 It is a static site with no backend, so it runs on GitHub Pages.
-**Try it live: <https://erencan-02.github.io/potential-sde/>**
+**Try it live: <https://erencan-02.github.io/overdamped-langevin/>**
 
 <table>
   <tr>
