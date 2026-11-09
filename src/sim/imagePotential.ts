@@ -85,27 +85,45 @@ export function darknessLevels(img: ImageSample): DarknessLevels | null {
  * flat colour, or fully transparent).
  */
 export function imageToPotential(img: ImageSample, opts: ImagePotentialOptions): PotentialGrid | null {
-  const { width: w, height: h, lightness, alpha } = img;
-  const levels = opts.levels ?? darknessLevels(img);
-  if (!levels || levels.hi - levels.lo < MIN_CONTRAST) return null;
-  const { lo, hi } = levels;
-
+  const weights = darknessWeights(img, opts);
+  if (!weights) return null;
+  const { width: w, height: h } = img;
   const pad = Math.ceil(3 * opts.blur);
   const W = w + 2 * pad;
   const H = h + 2 * pad;
   const values = new Float32Array(W * H);
-  const scale = 1 / (hi - lo);
   for (let j = 0; j < h; j++) {
-    for (let i = 0; i < w; i++) {
-      const k = j * w + i;
-      let s = (1 - lightness[k] - lo) * scale;
-      s = s < 0 ? 0 : s > 1 ? 1 : s;
-      if (opts.invert) s = 1 - s;
-      values[(j + pad) * W + (i + pad)] = -opts.depth * s * alpha[k];
-    }
+    const src = j * w;
+    const dst = (j + pad) * W + pad;
+    for (let i = 0; i < w; i++) values[dst + i] = -opts.depth * weights[src + i];
   }
   if (opts.blur > 0) gaussianBlur(values, W, H, opts.blur);
   return { width: W, height: H, pad, values };
+}
+
+/**
+ * Per-pixel weight in [0, 1]: contrast-stretched darkness (lightness if `invert`) times
+ * opacity. This is the common core of image → Ψ (depth) and image → particles (density).
+ * Returns `null` if the image has no usable contrast.
+ */
+export function darknessWeights(
+  img: ImageSample,
+  opts: { invert: boolean; levels?: DarknessLevels },
+): Float32Array | null {
+  const { width: w, height: h, lightness, alpha } = img;
+  const levels = opts.levels ?? darknessLevels(img);
+  if (!levels || levels.hi - levels.lo < MIN_CONTRAST) return null;
+  const { lo, hi } = levels;
+  const scale = 1 / (hi - lo);
+  const n = w * h;
+  const out = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    let s = (1 - lightness[k] - lo) * scale;
+    s = s < 0 ? 0 : s > 1 ? 1 : s;
+    if (opts.invert) s = 1 - s;
+    out[k] = s * alpha[k];
+  }
+  return out;
 }
 
 function percentile(hist: Uint32Array, total: number, q: number): number {
