@@ -2,9 +2,9 @@
 
 An interactive, real-time simulator of the overdamped Langevin equation
 
-$$
+```math
 dX_t = -\nabla\Psi(X_t)\,dt + \sigma\,dW_t ,\qquad X_t\in\mathbb{R}^2
-$$
+```
 
 on a potential landscape $\Psi$ that you paint with the mouse. Hills (warm colours, $\Psi>0$) push
 particles away, valleys (cool colours, $\Psi<0$) attract them, and Brownian noise with diffusivity
@@ -50,7 +50,7 @@ $|\Psi|$ is capped at 5.
 
 **Potential.** Ψ lives on a regular lattice (spacing $h = 0.04$) split into lazily allocated
 128 × 128 chunks, so the plane is effectively unbounded and memory only grows with the painted area.
-The brush adds a Gaussian bump $A\,e^{-r^2/2s^2}$ and clamps the result to $[-5, 5]$. The nodal
+The brush adds a Gaussian bump $A\thinspace e^{-r^2/2s^2}$ and clamps the result to $[-5, 5]$. The nodal
 gradient is kept up to date with second-order central differences and bilinearly interpolated,
 which gives a continuous drift field with $O(h^2)$ error.
 
@@ -60,10 +60,10 @@ even while the simulation is running:
 
 | | Update | Force evaluations / step |
 | --- | --- | --- |
-| **Euler–Maruyama** | $X_{n+1} = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W$ | 1 |
-| **Stochastic Heun** (default) | $\tilde X = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W$, then $X_{n+1} = X_n - \tfrac12\big[\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\big]\Delta t + \sigma\,\Delta W$ | 2 |
+| **Euler–Maruyama** | $X_{n+1} = X_n - \nabla\Psi(X_n)\thinspace \Delta t + \sigma\thinspace \Delta W$ | 1 |
+| **Stochastic Heun** (default) | $\tilde X = X_n - \nabla\Psi(X_n)\thinspace \Delta t + \sigma\thinspace \Delta W$, then $X_{n+1} = X_n - \tfrac12\big[\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\big]\Delta t + \sigma\thinspace \Delta W$ | 2 |
 
-with $\Delta W \sim \mathcal N(0, \Delta t\, I)$, the same increment in both Heun stages. Because the noise
+with $\Delta W \sim \mathcal N(0, \Delta t\thinspace  I)$, the same increment in both Heun stages. Because the noise
 is additive (σ is constant), **both schemes have strong order 1**. The difference is in the drift:
 Euler–Maruyama is first order there, while Heun is second order (and is reported to have weak
 order 2 for additive noise). Heun is therefore much more accurate where the force dominates the
@@ -80,7 +80,7 @@ power-of-two lattice fixed in world space, rebuilt only when the view or Ψ chan
 the GPU. Only the newly recorded column is uploaded each frame.
 
 **Tests.** `npm test` checks the field discretisation against analytic Gaussians, the normal
-sampler's moments and tails, free Brownian motion ($\mathrm{Var}\,X_t=\sigma^2 t$), the exact
+sampler's moments and tails, free Brownian motion ($\mathrm{Var}\thinspace X_t=\sigma^2 t$), the exact
 deterministic gradient flow, and relaxation to the Gibbs distribution of an Ornstein–Uhlenbeck
 process ($\mathrm{Var}=\sigma^2/2k$). For the schemes, it measures the convergence order in the
 drift (halving Δt divides the error by 2 for Euler–Maruyama and by 4 for Heun) and checks that each
