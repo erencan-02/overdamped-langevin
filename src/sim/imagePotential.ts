@@ -48,6 +48,12 @@ export interface PotentialGrid {
   values: Float32Array;
 }
 
+/**
+ * Standard deviation of the smoothing blur in world units (≈ 3 grid cells). Shared by image
+ * imports and the live camera so both give potentials of the same smoothness.
+ */
+export const IMAGE_BLUR_WORLD = 0.12;
+
 /** Fraction of opaque pixels ignored at either end when stretching the contrast. */
 const CLIP = 0.01;
 const BINS = 1024;
@@ -112,41 +118,53 @@ function percentile(hist: Uint32Array, total: number, q: number): number {
   return 1;
 }
 
-/** In-place separable Gaussian blur with zero padding outside the grid. */
+let blurScratch = new Float32Array(0);
+
+/**
+ * In-place separable Gaussian blur with zero padding outside the grid.
+ *
+ * Both passes are written as "for each tap, add a shifted row", so every inner loop walks
+ * memory contiguously (no strided column access) and contains no bounds checks.
+ */
 export function gaussianBlur(values: Float32Array, W: number, H: number, sigma: number): void {
   const r = Math.ceil(3 * sigma);
-  const kernel = new Float32Array(2 * r + 1);
+  const taps = 2 * r + 1;
+  const kernel = new Float32Array(taps);
   let sum = 0;
   for (let t = -r; t <= r; t++) {
     const v = Math.exp(-(t * t) / (2 * sigma * sigma));
     kernel[t + r] = v;
     sum += v;
   }
-  for (let t = 0; t < kernel.length; t++) kernel[t] /= sum;
+  for (let t = 0; t < taps; t++) kernel[t] /= sum;
 
-  const tmp = new Float32Array(Math.max(W, H));
-  // Rows
+  const n = W * H;
+  if (blurScratch.length < n) blurScratch = new Float32Array(n);
+  const tmp = blurScratch;
+
+  // Horizontal: values → tmp.
+  tmp.fill(0, 0, n);
   for (let j = 0; j < H; j++) {
     const row = j * W;
-    for (let i = 0; i < W; i++) {
-      let acc = 0;
-      const a = Math.max(0, i - r);
-      const b = Math.min(W - 1, i + r);
-      for (let x = a; x <= b; x++) acc += values[row + x] * kernel[x - i + r];
-      tmp[i] = acc;
+    for (let t = 0; t < taps; t++) {
+      const kt = kernel[t];
+      const d = t - r; // tmp[i] += k · values[i + d]
+      const iStart = Math.max(0, -d);
+      const iEnd = Math.min(W, W - d);
+      for (let i = iStart; i < iEnd; i++) tmp[row + i] += kt * values[row + i + d];
     }
-    values.set(tmp.subarray(0, W), row);
   }
-  // Columns
-  for (let i = 0; i < W; i++) {
-    for (let j = 0; j < H; j++) {
-      let acc = 0;
-      const a = Math.max(0, j - r);
-      const b = Math.min(H - 1, j + r);
-      for (let y = a; y <= b; y++) acc += values[y * W + i] * kernel[y - j + r];
-      tmp[j] = acc;
+  // Vertical: tmp → values.
+  values.fill(0, 0, n);
+  for (let j = 0; j < H; j++) {
+    const out = j * W;
+    for (let t = 0; t < taps; t++) {
+      const y = j + t - r;
+      if (y < 0 || y >= H) continue;
+      const kt = kernel[t];
+      const src = y * W;
+      for (let i = 0; i < W; i++) values[out + i] += kt * tmp[src + i];
     }
-    for (let j = 0; j < H; j++) values[j * W + i] = tmp[j];
   }
 }
 

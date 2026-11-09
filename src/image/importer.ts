@@ -1,13 +1,11 @@
 import { PSI_CAP } from '../config';
 import type { PotentialField } from '../sim/field';
-import { imageToPotential } from '../sim/imagePotential';
+import { IMAGE_BLUR_WORLD, imageToPotential } from '../sim/imagePotential';
 import type { Camera } from '../view/camera';
 import { type DecodedImage, decodeSource, isImageFile } from './decode';
 import type { WorkerRequest } from './decode.worker';
 import { writePotential } from './writePotential';
 
-/** Width of the smoothing blur in world units (≈ 3 grid cells, see imagePotential.ts). */
-const BLUR_WORLD = 0.12;
 /** The loading overlay stays at least this long so it never just flashes. */
 const MIN_BUSY_MS = 450;
 
@@ -235,7 +233,7 @@ export class ImageImporter {
   private apply(image: DecodedImage, cx: number, cy: number, inverted: boolean): boolean {
     const field = this.field;
     const h = field.h;
-    const grid = imageToPotential(image, { depth: PSI_CAP, invert: inverted, blur: BLUR_WORLD / h });
+    const grid = imageToPotential(image, { depth: PSI_CAP, invert: inverted, blur: IMAGE_BLUR_WORLD / h });
     if (!grid) return false;
 
     // One sample per lattice node: pixel (i, j) (rows top to bottom) sits at (x0 + i·h, yTop − j·h).

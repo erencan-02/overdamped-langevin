@@ -100,3 +100,39 @@ describe('importSize', () => {
     expect(big.height).toBe(1000);
   });
 });
+
+describe('gaussianBlur matches a direct convolution', () => {
+  it('on random data, including the zero-padded borders', () => {
+    const W = 37;
+    const H = 23;
+    const sigma = 1.7;
+    const src = new Float32Array(W * H).map(() => Math.random() * 2 - 1);
+    const fast = src.slice();
+    gaussianBlur(fast, W, H, sigma);
+
+    const r = Math.ceil(3 * sigma);
+    const k: number[] = [];
+    let s = 0;
+    for (let t = -r; t <= r; t++) {
+      k.push(Math.exp(-(t * t) / (2 * sigma * sigma)));
+      s += k[k.length - 1];
+    }
+    const kn = k.map((v) => v / s);
+    let maxErr = 0;
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) {
+        let acc = 0;
+        for (let b = -r; b <= r; b++) {
+          for (let a = -r; a <= r; a++) {
+            const x = i + a;
+            const y = j + b;
+            if (x < 0 || y < 0 || x >= W || y >= H) continue;
+            acc += kn[a + r] * kn[b + r] * src[y * W + x];
+          }
+        }
+        maxErr = Math.max(maxErr, Math.abs(acc - fast[j * W + i]));
+      }
+    }
+    expect(maxErr).toBeLessThan(1e-5);
+  });
+});

@@ -19,6 +19,14 @@ export function lightnessOf(Y: number): number {
 }
 
 /**
+ * lightnessOf() tabulated over Y ∈ [0, 1] and linearly interpolated: avoids a cube root per
+ * pixel (the hot spot for video frames) with an error far below one grey level.
+ */
+const LUT_SIZE = 4096;
+const LIGHTNESS = new Float32Array(LUT_SIZE + 2);
+for (let i = 0; i <= LUT_SIZE + 1; i++) LIGHTNESS[i] = lightnessOf(Math.min(1, i / LUT_SIZE));
+
+/**
  * Converts `width × height` RGBA pixels into an ImageSample. Pass `out` to reuse its arrays
  * (they must have width·height entries), which avoids allocations for video frames.
  */
@@ -38,7 +46,9 @@ export function rgbaToSample(
   const { lightness, alpha } = sample;
   for (let k = 0, p = 0; k < n; k++, p += 4) {
     const Y = 0.2126 * LINEAR[rgba[p]] + 0.7152 * LINEAR[rgba[p + 1]] + 0.0722 * LINEAR[rgba[p + 2]];
-    lightness[k] = lightnessOf(Y);
+    const x = Y * LUT_SIZE;
+    const i = x | 0;
+    lightness[k] = LIGHTNESS[i] + (LIGHTNESS[i + 1] - LIGHTNESS[i]) * (x - i);
     alpha[k] = rgba[p + 3] * (1 / 255);
   }
   return sample;

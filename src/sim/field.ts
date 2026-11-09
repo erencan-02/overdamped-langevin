@@ -61,6 +61,10 @@ export class PotentialField {
   epoch = 0;
   /** Bumped on every change of Ψ (painting, presets, clearing). */
   revision = 0;
+  /** Scratch rows for writeGrid (reused between video frames). */
+  private rowScratch = new Float32Array(0);
+  private colIdx = new Int32Array(0);
+  private colW = new Float32Array(0);
 
   /**
    * Dense lookup table over the bounding box of all allocated chunks. Chunk lookups are on the
@@ -311,19 +315,7 @@ export class PotentialField {
     const i1 = Math.floor(x1 * this.invH);
     const j0 = Math.ceil(y0 * this.invH);
     const j1 = Math.floor(y1 * this.invH);
-    if (i1 < i0 || j1 < j0) return;
-
-    // Gradient at nodes adjacent to the region changes too, so allocate one node of margin.
-    const ci0 = (i0 - 1) >> CHUNK_SHIFT;
-    const ci1 = (i1 + 1) >> CHUNK_SHIFT;
-    const cj0 = (j0 - 1) >> CHUNK_SHIFT;
-    const cj1 = (j1 + 1) >> CHUNK_SHIFT;
-    if (chunkKey(ci0, cj0) < 0 || chunkKey(ci1, cj1) < 0) return; // outside the supported plane
-    for (let cy = cj0; cy <= cj1; cy++) {
-      for (let cx = ci0; cx <= ci1; cx++) {
-        this.ensureChunk(cx, cy);
-      }
-    }
+    if (i1 < i0 || j1 < j0 || !this.prepareRegion(i0, j0, i1, j1)) return;
 
     for (let cy = j0 >> CHUNK_SHIFT; cy <= j1 >> CHUNK_SHIFT; cy++) {
       for (let cx = i0 >> CHUNK_SHIFT; cx <= i1 >> CHUNK_SHIFT; cx++) {
@@ -348,12 +340,109 @@ export class PotentialField {
         }
       }
     }
+    this.finishRegion(i0, j0, i1, j1);
+  }
 
+  /**
+   * Overwrites Ψ at every lattice node covered by a grid of samples with the bilinear
+   * interpolation of the grid (clamped to the cap). `values` has W × H samples, row 0 at world
+   * y = `top`, column 0 at world x = `left`, neighbouring samples `cell` apart; rows run towards
+   * −y. Nodes outside the grid's rectangle are not touched.
+   *
+   * This is the fast path for images and video frames: interpolation indices and weights are
+   * computed once per lattice column and row, and the inner loop has no function calls.
+   */
+  writeGrid(values: Float32Array, W: number, H: number, left: number, top: number, cell: number): void {
+    if (W < 2 || H < 2 || !(cell > 0)) return;
+    const h = this.h;
+    const cap = this.cap;
+    const inv = 1 / cell;
+    const i0 = Math.ceil(left * this.invH);
+    const i1 = Math.floor((left + (W - 1) * cell) * this.invH);
+    const j0 = Math.ceil((top - (H - 1) * cell) * this.invH);
+    const j1 = Math.floor(top * this.invH);
+    if (i1 < i0 || j1 < j0 || !this.prepareRegion(i0, j0, i1, j1)) return;
+
+    // Bilinear interpolation is separable: first interpolate every grid row at the lattice
+    // columns (H × nI values), then blend two of those rows per lattice row. The hot loop is a
+    // single multiply-add over contiguous memory.
+    const nI = i1 - i0 + 1;
+    if (this.rowScratch.length < H * nI) this.rowScratch = new Float32Array(H * nI);
+    const rows = this.rowScratch;
+    if (this.colIdx.length < nI) {
+      this.colIdx = new Int32Array(nI);
+      this.colW = new Float32Array(nI);
+    }
+    const colIdx = this.colIdx;
+    const colW = this.colW;
+    for (let a = 0; a < nI; a++) {
+      const u = ((i0 + a) * h - left) * inv;
+      const i = Math.min(W - 2, Math.max(0, Math.floor(u)));
+      colIdx[a] = i;
+      colW[a] = Math.min(1, Math.max(0, u - i));
+    }
+    for (let j = 0; j < H; j++) {
+      const src = j * W;
+      const dst = j * nI;
+      for (let a = 0; a < nI; a++) {
+        const k = src + colIdx[a];
+        const v0 = values[k];
+        rows[dst + a] = v0 + (values[k + 1] - v0) * colW[a];
+      }
+    }
+
+    for (let cy = j0 >> CHUNK_SHIFT; cy <= j1 >> CHUNK_SHIFT; cy++) {
+      const baseJ = cy << CHUNK_SHIFT;
+      const ma = Math.max(j0 - baseJ, 0);
+      const mb = Math.min(j1 - baseJ, CHUNK_MASK);
+      for (let cx = i0 >> CHUNK_SHIFT; cx <= i1 >> CHUNK_SHIFT; cx++) {
+        const psi = this.ensureChunk(cx, cy).psi;
+        const baseI = cx << CHUNK_SHIFT;
+        const la = Math.max(i0 - baseI, 0);
+        const lb = Math.min(i1 - baseI, CHUNK_MASK);
+        const aOff = baseI - i0;
+        for (let m = ma; m <= mb; m++) {
+          const v = (top - (baseJ + m) * h) * inv;
+          const j = Math.min(H - 2, Math.max(0, Math.floor(v)));
+          const fy = Math.min(1, Math.max(0, v - j));
+          const r0 = j * nI + aOff;
+          const r1 = r0 + nI;
+          const row = m << CHUNK_SHIFT;
+          for (let l = la; l <= lb; l++) {
+            const t = rows[r0 + l];
+            let val = t + (rows[r1 + l] - t) * fy;
+            if (val > cap) val = cap;
+            else if (val < -cap) val = -cap;
+            psi[row | l] = val;
+          }
+        }
+      }
+    }
+    this.finishRegion(i0, j0, i1, j1);
+  }
+
+  /**
+   * Allocates the chunks needed to change nodes [i0, i1] × [j0, j1] (plus one node of margin,
+   * whose gradient changes too). Returns false if the region is outside the supported plane.
+   */
+  private prepareRegion(i0: number, j0: number, i1: number, j1: number): boolean {
+    const ci0 = (i0 - 1) >> CHUNK_SHIFT;
+    const ci1 = (i1 + 1) >> CHUNK_SHIFT;
+    const cj0 = (j0 - 1) >> CHUNK_SHIFT;
+    const cj1 = (j1 + 1) >> CHUNK_SHIFT;
+    if (chunkKey(ci0, cj0) < 0 || chunkKey(ci1, cj1) < 0) return false;
+    for (let cy = cj0; cy <= cj1; cy++) {
+      for (let cx = ci0; cx <= ci1; cx++) this.ensureChunk(cx, cy);
+    }
+    return true;
+  }
+
+  /** Updates the gradient around changed nodes and marks the affected textures dirty. */
+  private finishRegion(i0: number, j0: number, i1: number, j1: number): void {
     this.updateGradient(i0 - 1, j0 - 1, i1 + 1, j1 + 1);
     this.revision++;
-
-    for (let cy = cj0; cy <= cj1; cy++) {
-      for (let cx = ci0; cx <= ci1; cx++) {
+    for (let cy = (j0 - 1) >> CHUNK_SHIFT; cy <= (j1 + 1) >> CHUNK_SHIFT; cy++) {
+      for (let cx = (i0 - 1) >> CHUNK_SHIFT; cx <= (i1 + 1) >> CHUNK_SHIFT; cx++) {
         this.markDirty(cx, cy);
       }
     }

@@ -89,3 +89,48 @@ describe('writePotential', () => {
     expect(field.sample(-3, -3)).toBeCloseTo(elsewhere, 6); // untouched
   });
 });
+
+describe('fast paths match straightforward reference implementations', () => {
+  it('writeGrid equals bilinear interpolation via setFunction', () => {
+    const W = 23;
+    const H = 17;
+    const values = new Float32Array(W * H).map(() => -5 * Math.random());
+    const g: PotentialGrid = { width: W, height: H, pad: 2, values };
+    const at = { x0: -1.237, yTop: 0.913, cell: 0.083 }; // deliberately not on the lattice
+    const b = gridBounds(g, at);
+
+    const fast = new PotentialField({ cellSize: 0.04, cap: 5 });
+    writePotential(fast, g, at);
+
+    const ref = new PotentialField({ cellSize: 0.04, cap: 5 });
+    ref.setFunction(b.x0, b.y0, b.x1, b.y1, (x, y) => {
+      const u = (x - b.x0) / at.cell;
+      const v = (b.y1 - y) / at.cell;
+      const i = Math.min(W - 2, Math.max(0, Math.floor(u)));
+      const j = Math.min(H - 2, Math.max(0, Math.floor(v)));
+      const fx = Math.min(1, Math.max(0, u - i));
+      const fy = Math.min(1, Math.max(0, v - j));
+      const k = j * W + i;
+      const top = values[k] + (values[k + 1] - values[k]) * fx;
+      const bot = values[k + W] + (values[k + W + 1] - values[k + W]) * fx;
+      return top + (bot - top) * fy;
+    });
+
+    let maxErr = 0;
+    let maxGradErr = 0;
+    const g1 = new Float64Array(2);
+    const g2 = new Float64Array(2);
+    for (let k = 0; k < 500; k++) {
+      const x = b.x0 + Math.random() * (b.x1 - b.x0);
+      const y = b.y0 + Math.random() * (b.y1 - b.y0);
+      maxErr = Math.max(maxErr, Math.abs(fast.sample(x, y) - ref.sample(x, y)));
+      fast.gradient(x, y, g1);
+      ref.gradient(x, y, g2);
+      maxGradErr = Math.max(maxGradErr, Math.abs(g1[0] - g2[0]), Math.abs(g1[1] - g2[1]));
+    }
+    expect(maxErr).toBeLessThan(1e-5);
+    expect(maxGradErr).toBeLessThan(1e-3);
+    expect(fast.revision).toBeGreaterThan(0);
+    expect(fast.dirty.size).toBe(ref.dirty.size);
+  });
+});
