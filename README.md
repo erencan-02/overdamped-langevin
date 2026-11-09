@@ -33,6 +33,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Lower Ψ | Brush mode, hold the **right** mouse button |
 | Drop a particle | Particle mode, **click** |
 | Spray particles | Particle mode, **Shift + drag** |
+| Spawn a grid of particles | Particle mode, **right-drag** a rectangle; spacing is set by *Grid spacing* in the panel |
 | Remove a particle | Particle mode, **right-click** it |
 | Pan | Hold the **mouse wheel** and drag (or **Alt + drag**) |
 | Zoom | **Scroll** |

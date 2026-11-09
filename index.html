@@ -123,6 +123,11 @@
       <div class="mode-only" data-for="particles">
         <div class="panel-sep"></div>
         <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
+        <label class="field">
+          <span class="field-head"><span>Grid spacing</span><output id="grid-spacing-out"></output></span>
+          <input type="range" id="grid-spacing" min="0" max="1" step="0.001" />
+          <span class="field-note">Right-drag a rectangle to fill it with particles at this spacing.</span>
+        </label>
         <button id="clear-particles" class="ghost-btn">Clear particles</button>
       </div>
     </div>
@@ -189,6 +194,7 @@
             <ul>
               <li><b>Click</b> to drop a particle</li>
               <li><b>Shift + drag</b> to spray many</li>
+              <li><b>Right-drag</b> a rectangle to fill it with a grid of particles (spacing in the panel)</li>
               <li><b>Right click</b> a particle to remove it</li>
             </ul>
           </section>

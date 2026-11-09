@@ -22,6 +22,8 @@ export interface AppState {
   brushRadius: number;
   /** Rate at which the brush changes Ψ at its centre (Ψ units per second). */
   brushStrength: number;
+  /** Distance between particles spawned on a grid with a right-drag (world units). */
+  particleSpacing: number;
 }
 
 export function initialState(): AppState {
@@ -37,5 +39,6 @@ export function initialState(): AppState {
     scheme: DEFAULT_SCHEME,
     brushRadius: DEFAULTS.brushRadius,
     brushStrength: DEFAULTS.brushStrength,
+    particleSpacing: DEFAULTS.particleSpacing,
   };
 }

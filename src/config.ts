@@ -45,6 +45,7 @@ export const DEFAULTS = {
   speed: 1,
   brushRadius: 0.6,
   brushStrength: 6,
+  particleSpacing: 0.5,
   scale: 64,
 } as const;
 
@@ -54,5 +55,6 @@ export const RANGES = {
   speed: [0.1, 5],
   brushRadius: [0.15, 3],
   brushStrength: [0.5, 30],
+  particleSpacing: [0.1, 3],
   scale: [6, 2500],
 } as const;

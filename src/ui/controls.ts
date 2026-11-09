@@ -116,6 +116,14 @@ export class Controls {
       format: (v) => `${v < 1 ? v.toFixed(2) : v.toFixed(1)}×`,
     });
     this.addSlider({
+      id: 'grid-spacing',
+      range: RANGES.particleSpacing,
+      log: true,
+      get: () => s.particleSpacing,
+      set: (v) => (s.particleSpacing = v),
+      format: (v) => v.toFixed(2),
+    });
+    this.addSlider({
       id: 'brush-size',
       range: RANGES.brushRadius,
       log: true,
@@ -255,7 +263,7 @@ export class Controls {
       '<span><b>Wheel-drag</b> pan</span><span><b>Scroll</b> zoom</span>';
     const particles =
       '<span><b>Click</b> drop particle</span><span><b>Shift-drag</b> spray</span>' +
-      '<span><b>Right-click</b> remove</span><span><b>Space</b> play / pause</span>';
+      '<span><b>Right-drag</b> grid</span><span><b>Right-click</b> remove</span>';
     this.hint.innerHTML = this.state.mode === 'brush' ? brush : particles;
   }
 

@@ -95,6 +95,16 @@ function main(): void {
   };
   const controls = new Controls(state, actions);
 
+  input.onGridSpawned = (spawned, requested) => {
+    if (spawned < requested) {
+      controls.showToast(
+        spawned === 0
+          ? `Particle limit reached (${MAX_PARTICLES}). Clear some particles first.`
+          : `Added ${spawned} of ${requested} particles: limit of ${MAX_PARTICLES} reached`,
+      );
+    }
+  };
+
   const importer = new ImageImporter(field, camera, {
     onStart: () => {
       input.cancel();
@@ -121,6 +131,7 @@ function main(): void {
     const target = e.target instanceof HTMLElement ? e.target : null;
     const onButtonOrInput = target?.closest('button, input') ?? null;
     if (e.key === 'Escape') {
+      input.cancel(); // e.g. abandons a spawn rectangle that is being dragged
       controls.closeOverlays();
       return;
     }
@@ -252,6 +263,7 @@ function main(): void {
       brushSign: input.brushSign,
       nextColor: PALETTE[input.nextColor],
       panning: input.panning,
+      selection: input.selection,
     });
 
     controls.setPanning(input.panning);

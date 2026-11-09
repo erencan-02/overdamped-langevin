@@ -1,6 +1,7 @@
 import { PALETTE } from '../config';
 import type { PotentialField } from '../sim/field';
-import type { ParticleSystem } from '../sim/particles';
+import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
+import { forEachGridPoint, spawnGrid } from '../sim/spawnGrid';
 import type { AppState } from '../state';
 import type { Camera } from '../view/camera';
 
@@ -10,12 +11,26 @@ const SPRAY_RATE = 80;
 const SPRAY_JITTER = 14;
 /** Pick radius for removing a particle with the right mouse button (CSS px). */
 const PICK_RADIUS = 14;
+/** A right-press that moves less than this (CSS px) is a click (remove), not a rectangle. */
+const DRAG_THRESHOLD = 4;
+
+/** Rectangle being dragged with the right mouse button in particle mode (world units). */
+export interface GridSelection {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  spacing: number;
+  /** How many more particles fit before MAX_PARTICLES is reached. */
+  room: number;
+}
 
 /**
  * Pointer and wheel interaction with the 2D landscape:
  *  - middle-drag (or Alt + left-drag) pans, the wheel zooms around the cursor,
  *  - brush mode: left raises Ψ, right lowers Ψ (Gaussian brush, applied continuously),
- *  - particle mode: left click drops a particle, Shift + drag sprays, right click removes.
+ *  - particle mode: left click drops a particle, Shift + drag sprays, right click removes,
+ *    right-drag spans a rectangle that is filled with an equidistant grid of particles.
  */
 export class InputController {
   /** Cursor in CSS pixels relative to the stage. */
@@ -32,9 +47,13 @@ export class InputController {
   private panPointer = -1;
   private toolPointer = -1;
   private lastPan = { x: 0, y: 0 };
+  /** Right-drag rectangle: anchor in world units, press position in CSS px. */
+  private grid: { ax: number; ay: number; sx: number; sy: number; dragged: boolean } | null = null;
 
   /** Called after any user interaction that changes the scene. */
   onInteract: () => void = () => {};
+  /** Called after a grid was spawned; `requested` > `spawned` when the particle limit was hit. */
+  onGridSpawned: (spawned: number, requested: number) => void = () => {};
 
   constructor(
     private readonly el: HTMLElement,
@@ -61,7 +80,21 @@ export class InputController {
   }
 
   get busy(): boolean {
-    return this.brushSign !== 0 || this.panning || this.spraying;
+    return this.brushSign !== 0 || this.panning || this.spraying || this.grid !== null;
+  }
+
+  /** The rectangle currently being dragged (for the preview), or null. */
+  get selection(): GridSelection | null {
+    const g = this.grid;
+    if (!g || !g.dragged) return null;
+    return {
+      ax: g.ax,
+      ay: g.ay,
+      bx: this.cam.toWorldX(this.cursor.x),
+      by: this.cam.toWorldY(this.cursor.y),
+      spacing: this.state.particleSpacing,
+      room: MAX_PARTICLES - this.ps.count,
+    };
   }
 
   private local(e: PointerEvent | WheelEvent): { x: number; y: number } {
@@ -132,11 +165,10 @@ export class InputController {
         this.dropParticle(wx, wy);
       }
     } else {
-      const i = this.ps.nearest(wx, wy, PICK_RADIUS / this.cam.scale);
-      if (i >= 0) {
-        this.ps.removeAt(i);
-        this.onInteract();
-      }
+      // Right button: a click removes the nearest particle, a drag spans a spawn rectangle.
+      this.toolPointer = e.pointerId;
+      this.grid = { ax: wx, ay: wy, sx: p.x, sy: p.y, dragged: false };
+      this.capture(e.pointerId);
     }
   };
 
@@ -149,9 +181,19 @@ export class InputController {
       this.cam.panBy(p.x - this.lastPan.x, p.y - this.lastPan.y);
       this.lastPan = p;
     }
+    const g = this.grid;
+    if (g && !g.dragged && e.pointerId === this.toolPointer) {
+      g.dragged = Math.hypot(p.x - g.sx, p.y - g.sy) >= DRAG_THRESHOLD;
+    }
   };
 
   private onUp = (e: PointerEvent): void => {
+    if (e.pointerId === this.toolPointer && e.type === 'pointerup') {
+      // The release position is the final corner of a spawn rectangle.
+      const p = this.local(e);
+      this.cursor.x = p.x;
+      this.cursor.y = p.y;
+    }
     if (e.pointerId === this.panPointer) {
       this.panPointer = -1;
       this.panning = false;
@@ -163,6 +205,7 @@ export class InputController {
         this.field.applyBrush(this.lastBrush.x, this.lastBrush.y, amount, this.state.brushRadius);
         this.onInteract();
       }
+      if (this.grid) this.finishGrid(e.type === 'pointerup');
       this.toolPointer = -1;
       this.brushSign = 0;
       this.spraying = false;
@@ -181,14 +224,38 @@ export class InputController {
     this.cam.zoomAt(p.x, p.y, Math.exp(-dy * k));
   };
 
-  /** Ends any drag, brush stroke or spray in progress. */
+  /** Ends any drag, brush stroke or spray in progress (a pending grid is discarded). */
   cancel(): void {
+    this.grid = null;
     this.toolPointer = -1;
     this.panPointer = -1;
     this.brushSign = 0;
     this.panning = false;
     this.spraying = false;
     this.lastBrush = null;
+  }
+
+  /** Completes a right-press: spawn the grid (drag) or remove a particle (click). */
+  private finishGrid(released: boolean): void {
+    const sel = this.selection;
+    const g = this.grid;
+    this.grid = null;
+    if (!g || !released) return; // cancelled (e.g. pointer capture lost)
+    if (!sel) {
+      const i = this.ps.nearest(g.ax, g.ay, PICK_RADIUS / this.cam.scale);
+      if (i >= 0) {
+        this.ps.removeAt(i);
+        this.onInteract();
+      }
+      return;
+    }
+    const grid = spawnGrid(sel.ax, sel.ay, sel.bx, sel.by, sel.spacing);
+    const spawned = forEachGridPoint(grid, sel.room, (x, y) => {
+      this.ps.add(x, y, this.nextColor);
+      this.pickNextColor();
+    });
+    if (spawned > 0) this.onInteract();
+    this.onGridSpawned(spawned, grid.count);
   }
 
   private dropParticle(wx: number, wy: number): void {
