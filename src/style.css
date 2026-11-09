@@ -624,6 +624,158 @@ input[type='range']:active::-webkit-slider-thumb {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toast.show.has-action {
+  pointer-events: auto;
+}
+.toast button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast button:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.toast button[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ image import */
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: grid;
+  padding: var(--gutter);
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fade 0.15s ease-out;
+  /* Let drag events reach the window listeners; the overlay is purely visual. */
+  pointer-events: none;
+}
+.drop-overlay[hidden] {
+  display: none;
+}
+.drop-frame {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  border: 2px dashed rgba(255, 255, 255, 0.75);
+  border-radius: 22px;
+  color: #fff;
+  text-align: center;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    border-color: rgba(255, 255, 255, 0.4);
+  }
+}
+.drop-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.drop-icon svg {
+  width: 32px;
+  height: 32px;
+  stroke-width: 1.6;
+}
+.drop-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.drop-sub {
+  max-width: 360px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 160;
+  display: grid;
+  place-items: center;
+  padding: var(--gutter);
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: progress;
+  touch-action: none;
+  animation: fade 0.18s ease-out;
+}
+.loading-overlay[hidden] {
+  display: none;
+}
+.loading-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 240px;
+  max-width: min(360px, 100%);
+  padding: 26px 28px 22px;
+  background: var(--surface-solid);
+  text-align: center;
+}
+.spinner {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  /* Ring in the colours of the Ψ colour map, cold → hot. */
+  background: conic-gradient(from 0deg, #4a1d84, #3a9bdc, #6fd3b6, #ffd54a, #ff9330, #e83f2e, rgba(232, 63, 46, 0));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.5s;
+  }
+  .drop-frame {
+    animation: none;
+  }
+}
+.loading-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.loading-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+body.is-busy .stage {
+  cursor: progress;
+}
 
 /* ------------------------------------------------------------------ help modal */
 

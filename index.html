@@ -79,6 +79,8 @@
           <button role="menuitem" data-preset="ring"><span class="sw sw-ring"></span>Ring</button>
           <button role="menuitem" data-preset="landscape"><span class="sw sw-rand"></span>Random landscape</button>
           <div class="menu-sep"></div>
+          <button role="menuitem" data-action="import-image">Import image…<kbd>I</kbd></button>
+          <div class="menu-sep"></div>
           <button role="menuitem" data-action="clear-particles">Clear particles<kbd>C</kbd></button>
           <button role="menuitem" data-action="clear-field">Clear potential<kbd>X</kbd></button>
           <button role="menuitem" data-action="reset-view">Reset view<kbd>R</kbd></button>
@@ -136,7 +138,26 @@
     <div class="hint" id="hint" aria-live="polite"></div>
 
     <!-- Toast -->
-    <div class="toast" id="toast" role="status"></div>
+    <div class="toast" id="toast" role="status"><span id="toast-text"></span><button id="toast-action" type="button" hidden></button></div>
+
+    <!-- Image import: drop zone, loading overlay, file picker -->
+    <input type="file" id="image-input" accept="image/*" hidden />
+    <div class="drop-overlay" id="drop-overlay" hidden>
+      <div class="drop-frame">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="m4.5 17.5 5-5 3.5 3.5 2.5-2.5 4 4" /></svg>
+        </div>
+        <div class="drop-title">Drop an image to turn it into Ψ</div>
+        <div class="drop-sub">Dark areas become valleys, light areas stay flat. Particles will gather on the dark parts.</div>
+      </div>
+    </div>
+    <div class="loading-overlay" id="loading-overlay" role="alertdialog" aria-modal="true" aria-busy="true" aria-labelledby="loading-title" hidden>
+      <div class="loading-card card">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="loading-title" id="loading-title">Converting image to Ψ…</div>
+        <div class="loading-name" id="loading-name"></div>
+      </div>
+    </div>
 
     <!-- Help dialog -->
     <div class="modal" id="help" hidden>
@@ -172,6 +193,14 @@
             </ul>
           </section>
           <section>
+            <h3>Images</h3>
+            <ul>
+              <li><b>Drop an image</b> anywhere to turn it into Ψ</li>
+              <li>Dark areas become valleys, light areas stay flat</li>
+              <li>Light drawing on dark? Use <b>Invert</b> afterwards</li>
+            </ul>
+          </section>
+          <section>
             <h3>Navigation</h3>
             <ul>
               <li><b>Hold mouse wheel + drag</b> to pan</li>
@@ -186,6 +215,7 @@
               <li><kbd>B</kbd> Brush · <kbd>P</kbd> Particles</li>
               <li><kbd>G</kbd> Grid · <kbd>T</kbd> Trails · <kbd>L</kbd> Contours</li>
               <li><kbd>F</kbd> Force field −∇Ψ</li>
+              <li><kbd>I</kbd> Import an image as Ψ</li>
               <li><kbd>S</kbd> Switch numerical scheme</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
               <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>

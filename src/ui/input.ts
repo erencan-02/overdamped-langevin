@@ -57,7 +57,7 @@ export class InputController {
     el.addEventListener('mousedown', (e) => {
       if (e.button === 1) e.preventDefault();
     });
-    window.addEventListener('blur', () => this.stopTools());
+    window.addEventListener('blur', () => this.cancel());
   }
 
   get busy(): boolean {
@@ -181,7 +181,8 @@ export class InputController {
     this.cam.zoomAt(p.x, p.y, Math.exp(-dy * k));
   };
 
-  private stopTools(): void {
+  /** Ends any drag, brush stroke or spray in progress. */
+  cancel(): void {
     this.toolPointer = -1;
     this.panPointer = -1;
     this.brushSign = 0;

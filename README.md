@@ -39,6 +39,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Play / pause | **Play** button or <kbd>Space</kbd> |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
 | Force field −∇Ψ (arrows) | Toolbar toggle or <kbd>F</kbd> |
+| Image → Ψ | **Drop an image** anywhere, or Scene menu → *Import image…* (<kbd>I</kbd>) |
 | Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
 
@@ -53,6 +54,15 @@ $|\Psi|$ is capped at 5.
 The brush adds a Gaussian bump $A\thinspace e^{-r^2/2s^2}$ and clamps the result to $[-5, 5]$. The nodal
 gradient is kept up to date with second-order central differences and bilinearly interpolated,
 which gives a continuous drift field with $O(h^2)$ error.
+
+**Images as potentials.** A dropped image is decoded in a Web Worker (`createImageBitmap` +
+`OffscreenCanvas`, with an `<img>` fallback, e.g. for SVG), resampled to the potential grid with
+step-wise downscaling, and converted to perceptual lightness (CIE L\*). After a robust contrast
+stretch (1st–99th percentile), dark pixels become valleys down to $-5$, light pixels stay flat and
+transparent pixels are ignored, so the Gibbs density $\propto e^{-2\Psi/\sigma^2}$ concentrates on
+the dark parts of the picture. A Gaussian blur of about three grid cells keeps forces and
+curvatures within what the time step can handle. *Invert* swaps light and dark. Everything runs
+in the browser: nothing is uploaded.
 
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
 behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,

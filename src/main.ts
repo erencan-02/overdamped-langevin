@@ -8,6 +8,7 @@ import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { InputController } from './ui/input';
+import { ImageImporter } from './image/importer';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
 
@@ -85,18 +86,40 @@ function main(): void {
     resetView() {
       camera.reset();
     },
+    importImage() {
+      importer.openPicker();
+    },
     preset(name: string) {
       applyPreset(field, name as PresetName, camera.x, camera.y);
     },
   };
   const controls = new Controls(state, actions);
 
+  const importer = new ImageImporter(field, camera, {
+    onStart: () => {
+      input.cancel();
+      controls.closeOverlays();
+    },
+    onImported: ({ inverted }) => {
+      controls.showToast(inverted ? 'Image inverted: light areas are now valleys' : 'Image converted to Ψ', {
+        label: 'Invert',
+        run: () => importer.invertLast(),
+      });
+    },
+    onError: (message) => controls.showToast(message),
+  });
+
   // ---------------------------------------------------------------- keyboard
 
   window.addEventListener('keydown', (e) => {
+    // While an image is being converted, the app accepts no input at all.
+    if (importer.busy) {
+      e.preventDefault();
+      return;
+    }
     if (e.ctrlKey || e.metaKey) return;
-    const target = e.target as HTMLElement;
-    const onButtonOrInput = target.closest('button, input');
+    const target = e.target instanceof HTMLElement ? e.target : null;
+    const onButtonOrInput = target?.closest('button, input') ?? null;
     if (e.key === 'Escape') {
       controls.closeOverlays();
       return;
@@ -106,7 +129,7 @@ function main(): void {
       case ' ':
         // Space would also "click" a focused button; take focus away and toggle once.
         e.preventDefault();
-        if (onButtonOrInput) (target as HTMLElement).blur();
+        if (onButtonOrInput) target?.blur();
         if (!e.repeat) actions.togglePlay();
         break;
       case 'b':
@@ -120,6 +143,10 @@ function main(): void {
       case 's':
       case 'S':
         actions.setScheme(state.scheme === 'heun' ? 'euler-maruyama' : 'heun');
+        break;
+      case 'i':
+      case 'I':
+        actions.importImage();
         break;
       case 'f':
       case 'F':

@@ -19,6 +19,7 @@ export interface ControlActions {
   clearParticles(): void;
   clearField(): void;
   resetView(): void;
+  importImage(): void;
   preset(name: string): void;
 }
 
@@ -81,6 +82,7 @@ export class Controls {
       else if (b.dataset.action === 'clear-particles') actions.clearParticles();
       else if (b.dataset.action === 'clear-field') actions.clearField();
       else if (b.dataset.action === 'reset-view') actions.resetView();
+      else if (b.dataset.action === 'import-image') actions.importImage();
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {
@@ -257,11 +259,22 @@ export class Controls {
     this.hint.innerHTML = this.state.mode === 'brush' ? brush : particles;
   }
 
-  showToast(text: string): void {
-    this.toast.textContent = text;
+  /** Shows a short message, optionally with one action button (then it stays longer). */
+  showToast(text: string, action?: { label: string; run(): void }): void {
+    $('toast-text').textContent = text;
+    const button = $<HTMLButtonElement>('toast-action');
+    button.hidden = !action;
+    button.textContent = action?.label ?? '';
+    button.onclick = action
+      ? () => {
+          this.toast.classList.remove('show');
+          action.run();
+        }
+      : null;
+    this.toast.classList.toggle('has-action', !!action);
     this.toast.classList.add('show');
     window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), 1400);
+    this.toastTimer = window.setTimeout(() => this.toast.classList.remove('show'), action ? 6000 : 1400);
   }
 
   private lastReadout = '';
