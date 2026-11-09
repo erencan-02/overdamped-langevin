@@ -9,6 +9,7 @@ import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { InputController } from './ui/input';
 import { ImageImporter } from './image/importer';
+import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
 
@@ -71,6 +72,9 @@ function main(): void {
       state.contours = !state.contours;
       controls.sync();
     },
+    toggleCamera() {
+      liveCamera.toggle();
+    },
     toggleForceField() {
       state.forceField = !state.forceField;
       controls.sync();
@@ -80,6 +84,7 @@ function main(): void {
       controls.showToast('Particles cleared');
     },
     clearField() {
+      liveCamera.stop();
       field.clear();
       controls.showToast('Potential cleared');
     },
@@ -90,6 +95,7 @@ function main(): void {
       importer.openPicker();
     },
     preset(name: string) {
+      liveCamera.stop();
       applyPreset(field, name as PresetName, camera.x, camera.y);
     },
   };
@@ -105,8 +111,31 @@ function main(): void {
     }
   };
 
+  const liveCamera = new LiveCamera(
+    document.getElementById('cam-video') as HTMLVideoElement,
+    field,
+    camera,
+    {
+      onStateChange: (s) => {
+        controls.setCameraState(s);
+        if (s === 'starting') controls.showToast('Waiting for camera permission…');
+        if (s === 'live') {
+          controls.showToast('Camera live: dark areas are valleys', {
+            label: 'Invert',
+            run: () => {
+              liveCamera.invert = !liveCamera.invert;
+              controls.showToast(liveCamera.invert ? 'Inverted: light areas are valleys' : 'Dark areas are valleys');
+            },
+          });
+        }
+      },
+      onError: (message) => controls.showToast(message),
+    },
+  );
+
   const importer = new ImageImporter(field, camera, {
     onStart: () => {
+      liveCamera.stop(); // a dropped image replaces the live potential
       input.cancel();
       controls.closeOverlays();
     },
@@ -158,6 +187,10 @@ function main(): void {
       case 'i':
       case 'I':
         actions.importImage();
+        break;
+      case 'v':
+      case 'V':
+        actions.toggleCamera();
         break;
       case 'f':
       case 'F':
@@ -286,6 +319,7 @@ function main(): void {
       field,
       particles,
       camera,
+      liveCamera,
       get renderer() {
         return renderer;
       },

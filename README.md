@@ -41,6 +41,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
 | Force field −∇Ψ (arrows) | Toolbar toggle or <kbd>F</kbd> |
 | Image → Ψ | **Drop an image** anywhere, or Scene menu → *Import image…* (<kbd>I</kbd>) |
+| Live camera → Ψ | Camera button in the toolbar (<kbd>V</kbd>); click again to stop and keep the last frame |
 | Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
 
@@ -64,6 +65,16 @@ transparent pixels are ignored, so the Gibbs density $\propto e^{-2\Psi/\sigma^2
 the dark parts of the picture. A Gaussian blur of about three grid cells keeps forces and
 curvatures within what the time step can handle. *Invert* swaps light and dark. Everything runs
 in the browser: nothing is uploaded.
+
+**Live camera.** The camera button streams the front camera into Ψ through the same pipeline as
+dropped images (`image/pixels.ts` → `imageToPotential` → `writePotential`). Frames are handled in
+`requestVideoFrameCallback`, i.e. as soon as the browser has a new frame, directly on the main
+thread (a worker round trip would add a frame of latency). Each frame is read back at about
+160 × 120 samples, mirrored, and written into a fixed region of at most 16 world units, so the
+per-frame cost stays at a few milliseconds. The contrast levels are smoothed over frames and never
+stretched below a minimum span, so automatic exposure does not make the landscape flicker and
+sensor noise in dark scenes does not turn into deep valleys. Stopping the camera keeps the last
+frame. Video never leaves the browser.
 
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
 behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,

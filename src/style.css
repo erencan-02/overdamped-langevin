@@ -649,6 +649,74 @@ input[type='range']:active::-webkit-slider-thumb {
   display: none;
 }
 
+/* ------------------------------------------------------------------ live camera */
+
+.cam-preview {
+  position: fixed;
+  top: 76px;
+  right: var(--gutter);
+  width: 176px;
+  padding: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.cam-preview[hidden] {
+  display: none;
+}
+.cam-preview video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #0f172a;
+  transform: scaleX(-1); /* mirror, like the potential */
+}
+.cam-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cam-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: live 1.4s ease-in-out infinite;
+}
+.cam-preview.starting .cam-dot {
+  background: #f59e0b;
+}
+@keyframes live {
+  50% {
+    opacity: 0.35;
+  }
+}
+#toggle-camera[aria-pressed='true'] {
+  color: #fff;
+  background: #ef4444;
+}
+#toggle-camera.starting {
+  animation: pulse 1.4s ease-out infinite;
+}
+@media (max-width: 860px) {
+  .cam-preview {
+    width: 120px;
+  }
+}
+
 /* ------------------------------------------------------------------ image import */
 
 .drop-overlay {
@@ -947,5 +1015,20 @@ body.is-busy .stage {
   }
   .help-grid {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 400px) {
+  /* Narrow phones (360 px): tighter toolbar so all buttons fit. */
+  .icon-btn {
+    width: 27px;
+  }
+  .divider {
+    margin: 0 1px;
+  }
+  .seg-btn {
+    padding: 0 5px;
+  }
+  .play {
+    padding: 0 7px;
   }
 }

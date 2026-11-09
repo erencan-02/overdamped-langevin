@@ -16,6 +16,7 @@ export interface ControlActions {
   toggleTrails(): void;
   toggleContours(): void;
   toggleForceField(): void;
+  toggleCamera(): void;
   clearParticles(): void;
   clearField(): void;
   resetView(): void;
@@ -68,6 +69,7 @@ export class Controls {
     $('toggle-trails').addEventListener('click', () => actions.toggleTrails());
     $('toggle-contours').addEventListener('click', () => actions.toggleContours());
     $('toggle-force').addEventListener('click', () => actions.toggleForceField());
+    $('toggle-camera').addEventListener('click', () => actions.toggleCamera());
     $('clear-particles').addEventListener('click', () => actions.clearParticles());
 
     // Scene menu
@@ -246,6 +248,18 @@ export class Controls {
     if (!active) return;
     this.segThumb.style.width = `${active.offsetWidth}px`;
     this.segThumb.style.transform = `translateX(${active.offsetLeft}px)`;
+  }
+
+  /** Reflects the live camera state in the toolbar button and the preview. */
+  setCameraState(state: 'off' | 'starting' | 'live'): void {
+    const button = $('toggle-camera');
+    button.setAttribute('aria-pressed', String(state !== 'off'));
+    button.classList.toggle('starting', state === 'starting');
+    button.dataset.tip = state === 'off' ? 'Live camera → Ψ' : 'Stop camera';
+    const preview = $('cam-preview');
+    preview.hidden = state === 'off';
+    preview.classList.toggle('starting', state === 'starting');
+    $('cam-badge-text').textContent = state === 'starting' ? 'Starting' : 'Live';
   }
 
   setPanning(p: boolean): void {
