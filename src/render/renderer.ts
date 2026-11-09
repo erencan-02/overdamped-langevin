@@ -2,9 +2,12 @@ import { PALETTE_RGB } from '../config';
 import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
 import type { Camera } from '../view/camera';
+import { ARROW_FLOATS, arrowSpacing, buildArrows } from '../view/forceField';
 import { gridSpacing } from '../view/gridSpacing';
 import { createBuffer, createProgram, type Program } from './gl';
 import {
+  ARROW_FS,
+  ARROW_VS,
   FIELD_FS,
   FIELD_VS,
   FULLSCREEN_VS,
@@ -23,6 +26,8 @@ export interface RenderOptions {
   grid: boolean;
   trails: boolean;
   contours: boolean;
+  /** Show the force field −∇Ψ as arrows. */
+  forceField: boolean;
 }
 
 /**
@@ -35,11 +40,21 @@ export class Renderer {
   private readonly gridProg: Program;
   private readonly trailProg: Program;
   private readonly particleProg: Program;
+  private readonly arrowProg: Program;
 
   private readonly fieldVao: WebGLVertexArrayObject;
   private readonly gridVao: WebGLVertexArrayObject;
   private readonly trailVao: WebGLVertexArrayObject;
   private readonly particleVao: WebGLVertexArrayObject;
+  private readonly arrowVao: WebGLVertexArrayObject;
+
+  /** Force-field arrows, rebuilt only when the view or Ψ changes. */
+  private readonly arrowBuffer: WebGLBuffer;
+  private arrowData: Float32Array = new Float32Array(0);
+  private arrowCapacity = 0; // floats
+  private arrowCount = 0;
+  private arrowKey = '';
+  private arrowArea: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   private readonly particleBuffer: WebGLBuffer;
   private readonly particleData = new Float32Array(MAX_PARTICLES * INST_FLOATS);
@@ -76,6 +91,7 @@ export class Renderer {
     this.gridProg = createProgram(gl, FULLSCREEN_VS, GRID_FS);
     this.trailProg = createProgram(gl, TRAIL_VS, TRAIL_FS);
     this.particleProg = createProgram(gl, PARTICLE_VS, PARTICLE_FS);
+    this.arrowProg = createProgram(gl, ARROW_VS, ARROW_FS);
 
     // Field: unit quad as a triangle strip.
     this.fieldVao = gl.createVertexArray()!;
@@ -108,6 +124,15 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
+
+    // Arrows: per-vertex corner + per-instance (x, y, ux, uy) and (length, opacity).
+    this.arrowVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.arrowVao);
+    createBuffer(gl, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
+    this.enableAttrib(this.arrowProg, 'a_corner', 2, 0, 0, 0);
+    this.arrowBuffer = createBuffer(gl, 16, gl.DYNAMIC_DRAW);
+    this.enableAttrib(this.arrowProg, 'a_arrow', 4, ARROW_FLOATS * 4, 0, 1);
+    this.enableAttrib(this.arrowProg, 'a_meta', 2, ARROW_FLOATS * 4, 16, 1);
 
     gl.bindVertexArray(null);
     gl.disable(gl.DEPTH_TEST);
@@ -163,6 +188,7 @@ export class Renderer {
 
     gl.enable(gl.BLEND);
     if (opts.grid) this.drawGrid(cam, scale, W, H);
+    if (opts.forceField) this.drawArrows(cam, field, scale, W, H);
     this.uploadParticles(ps);
     if (opts.trails && this.particleInstances > 0) {
       this.uploadTrails(ps);
@@ -289,6 +315,54 @@ export class Renderer {
     gl.uniform1f(p.uniforms.u_minorAlpha, smoothstep(5, 14, minorPx));
     gl.uniform1f(p.uniforms.u_dpr, this.dpr);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  // ---------------------------------------------------------------- force field
+
+  private drawArrows(cam: Camera, field: PotentialField, scale: number, W: number, H: number): void {
+    const gl = this.gl;
+    // Arrows live in world space, so they are built for a padded area around the view and only
+    // rebuilt when the view leaves it, the lattice spacing changes (zoom) or Ψ changes.
+    const b = cam.bounds();
+    const spacing = arrowSpacing(cam.scale);
+    const key = `${spacing},${field.revision},${field.epoch}`;
+    const a = this.arrowArea;
+    const inside = a && b.x0 >= a.x0 && b.x1 <= a.x1 && b.y0 >= a.y0 && b.y1 <= a.y1;
+    if (key !== this.arrowKey || !inside) {
+      this.arrowKey = key;
+      const padX = 0.5 * (b.x1 - b.x0);
+      const padY = 0.5 * (b.y1 - b.y0);
+      const area = { x0: b.x0 - padX, y0: b.y0 - padY, x1: b.x1 + padX, y1: b.y1 + padY };
+      this.arrowArea = area;
+      const { data, count } = buildArrows(field, area, cam.scale, this.arrowData);
+      this.arrowData = data;
+      this.arrowCount = count;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowBuffer);
+      const floats = count * ARROW_FLOATS;
+      if (floats > this.arrowCapacity) {
+        this.arrowCapacity = Math.max(1024, Math.ceil(floats * 1.5));
+      }
+      // Re-specifying the storage ("orphaning") lets the driver hand out a fresh buffer instead
+      // of waiting for the GPU to finish reading the previous contents.
+      gl.bufferData(gl.ARRAY_BUFFER, this.arrowCapacity * 4, gl.DYNAMIC_DRAW);
+      if (floats > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, floats);
+    }
+    if (this.arrowCount === 0) return;
+
+    const p = this.arrowProg;
+    const dpr = this.dpr;
+    const halo = 1.3 * dpr;
+    gl.useProgram(p.program);
+    gl.bindVertexArray(this.arrowVao);
+    gl.uniform2f(p.uniforms.u_res, W, H);
+    gl.uniform1f(p.uniforms.u_scale, scale);
+    gl.uniform2f(p.uniforms.u_center, cam.x, cam.y);
+    gl.uniform1f(p.uniforms.u_dpr, dpr);
+    gl.uniform1f(p.uniforms.u_spacingPx, spacing * scale);
+    gl.uniform1f(p.uniforms.u_headHalfWidth, 3.4 * dpr);
+    gl.uniform1f(p.uniforms.u_halo, halo);
+    gl.uniform1f(p.uniforms.u_pad, halo + 1.5);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.arrowCount);
   }
 
   // ---------------------------------------------------------------- particles & trails

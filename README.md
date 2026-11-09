@@ -26,6 +26,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
+| Force field −∇Ψ (arrows) | Toolbar toggle or <kbd>F</kbd> |
 | Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
 
@@ -62,7 +63,8 @@ sub-steps. Gaussian increments come from a ziggurat sampler on a seedable xoshir
 
 **Rendering.** WebGL2 throughout: one half-float texture per chunk (with a shared border row/column
 for seamless bilinear filtering) coloured by a diverging colormap with optional iso-contours, a
-procedural adaptive grid, instanced particle sprites, and trails whose ring-buffer history is kept on
+procedural adaptive grid, a force-field overlay (instanced arrows drawn as signed-distance shapes on a
+power-of-two lattice fixed in world space, rebuilt only when the view or Ψ changes), instanced particle sprites, and trails whose ring-buffer history is kept on
 the GPU. Only the newly recorded column is uploaded each frame.
 
 **Tests.** `npm test` checks the field discretisation against analytic Gaussians, the normal

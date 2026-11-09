@@ -59,6 +59,8 @@ export class PotentialField {
   readonly dirty = new Set<number>();
   /** Bumped by `clear()` so consumers can drop everything they cached. */
   epoch = 0;
+  /** Bumped on every change of Ψ (painting, presets, clearing). */
+  revision = 0;
 
   /**
    * Dense lookup table over the bounding box of all allocated chunks. Chunk lookups are on the
@@ -147,6 +149,7 @@ export class PotentialField {
     this.indexW = 0;
     this.indexH = 0;
     this.epoch++;
+    this.revision++;
   }
 
   // ---------------------------------------------------------------- node access
@@ -333,6 +336,7 @@ export class PotentialField {
     }
 
     this.updateGradient(i0 - 1, j0 - 1, i1 + 1, j1 + 1);
+    this.revision++;
 
     for (let cy = cj0; cy <= cj1; cy++) {
       for (let cx = ci0; cx <= ci1; cx++) {

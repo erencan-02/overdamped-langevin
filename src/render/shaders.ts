@@ -218,3 +218,76 @@ void main() {
   float a = bodyA + shadowA * (1.0 - bodyA);
   o_color = vec4(rgb, a);
 }`;
+
+// ------------------------------------------------------------------ force field (−∇Ψ arrows)
+
+export const ARROW_VS = /* glsl */ `#version 300 es
+in vec2 a_corner;    // [-1, 1]^2
+in vec4 a_arrow;     // (world x, world y, unit direction x, unit direction y)
+in vec2 a_meta;      // (length as a fraction of the lattice spacing, opacity)
+uniform float u_spacingPx; // lattice spacing in device px
+uniform float u_pad; // device px around the arrow for the halo and anti-aliasing
+uniform float u_headHalfWidth; // device px
+${VIEW}
+out vec2 v_local;    // device px in arrow coordinates (along, across), origin at the centre
+out float v_len;
+out float v_alpha;
+void main() {
+  float len = a_meta.x * u_spacingPx;
+  vec2 dir = a_arrow.zw;
+  vec2 perp = vec2(-dir.y, dir.x);
+  vec2 half_ = vec2(0.5 * len + u_pad, u_headHalfWidth + u_pad);
+  vec2 local = a_corner * half_;
+  vec2 centrePx = (a_arrow.xy - u_center) * u_scale;
+  vec2 p = centrePx + dir * local.x + perp * local.y;
+  gl_Position = vec4(p * 2.0 / u_res, 0.0, 1.0);
+  v_local = local;
+  v_len = len;
+  v_alpha = a_meta.y;
+}`;
+
+export const ARROW_FS = /* glsl */ `#version 300 es
+precision highp float;
+uniform float u_dpr;
+uniform float u_headHalfWidth;
+uniform float u_halo;
+in vec2 v_local;
+in float v_len;
+in float v_alpha;
+out vec4 o_color;
+
+float segmentDistance(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+void main() {
+  float halfLen = 0.5 * v_len;
+  // Head size shrinks with very short arrows so they never become all head.
+  float headLen = min(0.55 * v_len, 5.5 * u_dpr);
+  float headHalfW = min(u_headHalfWidth, 0.7 * headLen);
+  float shaftHalfW = 0.65 * u_dpr;
+
+  // Shaft: from the tail to the middle of the head.
+  float dShaft = segmentDistance(v_local, vec2(-halfLen, 0.0), vec2(halfLen - 0.5 * headLen, 0.0))
+               - shaftHalfW;
+
+  // Head: isosceles triangle with its tip at +halfLen (approximate signed distance).
+  vec2 q = vec2(halfLen - v_local.x, abs(v_local.y));
+  float edge = (q.y * headLen - q.x * headHalfW) / sqrt(headLen * headLen + headHalfW * headHalfW);
+  float dHead = max(edge, max(q.x - headLen, -q.x));
+
+  float d = min(dShaft, dHead);
+  float core = 1.0 - smoothstep(-0.5, 0.5, d);
+  float halo = 1.0 - smoothstep(-0.5, 0.5, d - u_halo);
+
+  vec3 ink = vec3(0.059, 0.090, 0.165);   // slate-900, as the grid and UI text
+  float ca = core * 0.78 * v_alpha;
+  float ha = halo * 0.6 * v_alpha;
+  // ink core over a soft white halo (premultiplied)
+  vec3 rgb = ink * ca + vec3(1.0) * ha * (1.0 - ca);
+  float a = ca + ha * (1.0 - ca);
+  o_color = vec4(rgb, a);
+}`;

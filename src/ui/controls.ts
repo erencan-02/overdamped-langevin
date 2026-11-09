@@ -15,6 +15,7 @@ export interface ControlActions {
   toggleGrid(): void;
   toggleTrails(): void;
   toggleContours(): void;
+  toggleForceField(): void;
   clearParticles(): void;
   clearField(): void;
   resetView(): void;
@@ -65,6 +66,7 @@ export class Controls {
     $('toggle-grid').addEventListener('click', () => actions.toggleGrid());
     $('toggle-trails').addEventListener('click', () => actions.toggleTrails());
     $('toggle-contours').addEventListener('click', () => actions.toggleContours());
+    $('toggle-force').addEventListener('click', () => actions.toggleForceField());
     $('clear-particles').addEventListener('click', () => actions.clearParticles());
 
     // Scene menu
@@ -130,6 +132,13 @@ export class Controls {
 
     this.buildLegend();
     this.sync();
+    // Button sizes change with breakpoints (labels hidden on phones) and late-loading fonts.
+    const ro = new ResizeObserver(() => this.placeThumb());
+    for (const b of this.segButtons) ro.observe(b);
+    // Enable the sliding animation of the mode switch only after its first placement.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => this.segThumb.parentElement?.classList.add('animate')),
+    );
   }
 
   get helpOpen(): boolean {
@@ -201,11 +210,7 @@ export class Controls {
     const s = this.state;
     this.stage.dataset.mode = s.mode;
     for (const b of this.segButtons) b.setAttribute('aria-checked', String(b.dataset.mode === s.mode));
-    const active = this.segButtons.find((b) => b.dataset.mode === s.mode);
-    if (active) {
-      this.segThumb.style.width = `${active.offsetWidth}px`;
-      this.segThumb.style.transform = `translateX(${active.offsetLeft}px)`;
-    }
+    this.placeThumb();
     for (const el of document.querySelectorAll<HTMLElement>('.mode-only')) {
       el.hidden = el.dataset.for !== s.mode;
     }
@@ -216,12 +221,21 @@ export class Controls {
     $('toggle-grid').setAttribute('aria-pressed', String(s.grid));
     $('toggle-trails').setAttribute('aria-pressed', String(s.trails));
     $('toggle-contours').setAttribute('aria-pressed', String(s.contours));
+    $('toggle-force').setAttribute('aria-pressed', String(s.forceField));
     for (const b of this.schemeButtons) {
       b.setAttribute('aria-checked', String(b.dataset.scheme === s.scheme));
     }
     this.schemeNote.textContent = SCHEMES[s.scheme].summary;
     for (const sl of this.sliders) this.syncSlider(sl);
     this.updateHint();
+  }
+
+  /** Moves the highlight of the mode switch under the active button. */
+  private placeThumb(): void {
+    const active = this.segButtons.find((b) => b.dataset.mode === this.state.mode);
+    if (!active) return;
+    this.segThumb.style.width = `${active.offsetWidth}px`;
+    this.segThumb.style.transform = `translateX(${active.offsetLeft}px)`;
   }
 
   setPanning(p: boolean): void {

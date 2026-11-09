@@ -70,6 +70,10 @@ function main(): void {
       state.contours = !state.contours;
       controls.sync();
     },
+    toggleForceField() {
+      state.forceField = !state.forceField;
+      controls.sync();
+    },
     clearParticles() {
       particles.clear();
       controls.showToast('Particles cleared');
@@ -116,6 +120,10 @@ function main(): void {
       case 's':
       case 'S':
         actions.setScheme(state.scheme === 'heun' ? 'euler-maruyama' : 'heun');
+        break;
+      case 'f':
+      case 'F':
+        actions.toggleForceField();
         break;
       case 'g':
       case 'G':
@@ -206,6 +214,7 @@ function main(): void {
         grid: state.grid,
         trails: state.trails,
         contours: state.contours,
+        forceField: state.forceField,
       });
     }
     overlay.draw(camera, {

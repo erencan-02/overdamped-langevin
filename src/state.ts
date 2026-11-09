@@ -10,6 +10,8 @@ export interface AppState {
   grid: boolean;
   trails: boolean;
   contours: boolean;
+  /** Show the force field −∇Ψ as arrows. */
+  forceField: boolean;
   /** Diffusivity σ of the Brownian term. */
   sigma: number;
   /** Simulated time per real second. */
@@ -29,6 +31,7 @@ export function initialState(): AppState {
     grid: true,
     trails: true,
     contours: true,
+    forceField: false,
     sigma: DEFAULTS.sigma,
     speed: DEFAULTS.speed,
     scheme: DEFAULT_SCHEME,
