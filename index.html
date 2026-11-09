@@ -2,10 +2,191 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Paint a potential landscape and watch particles follow the stochastic differential equation dX = −∇Ψ(X) dt + σ dW in real time."
+    />
+    <meta name="theme-color" content="#ffffff" />
     <title>Potential SDE</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
+    <div id="stage" class="stage" data-mode="brush">
+      <canvas id="gl"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <!-- Title -->
+    <div class="brand card">
+      <div class="brand-title">Potential SDE</div>
+      <div class="brand-eq">dX<sub>t</sub> = −∇Ψ(X<sub>t</sub>) dt + σ dW<sub>t</sub></div>
+    </div>
+
+    <!-- Main toolbar -->
+    <div class="toolbar card" role="toolbar" aria-label="Tools">
+      <div class="seg" role="radiogroup" aria-label="Mode">
+        <button class="seg-btn" data-mode="brush" role="radio" data-tip="Paint potential" data-key="B">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke-dasharray="2.2 2.8" /><circle cx="12" cy="12" r="3.2" class="fill" /></svg>
+          <span>Brush</span>
+        </button>
+        <button class="seg-btn" data-mode="particles" role="radio" data-tip="Drop particles" data-key="P">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8.5" r="2.4" class="fill" /><circle cx="16.5" cy="7" r="2.4" class="fill" /><circle cx="11.5" cy="16.5" r="2.4" class="fill" /></svg>
+          <span>Particles</span>
+        </button>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+
+      <span class="divider"></span>
+
+      <button id="play" class="play" data-tip="Play" data-key="Space" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M8 5.8v12.4a1 1 0 0 0 1.5.86l10-6.2a1 1 0 0 0 0-1.72l-10-6.2A1 1 0 0 0 8 5.8z" /></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect class="fill" x="6.5" y="5" width="4" height="14" rx="1.2" /><rect class="fill" x="13.5" y="5" width="4" height="14" rx="1.2" /></svg>
+        <span id="play-label">Play</span>
+      </button>
+
+      <span class="divider"></span>
+
+      <button id="toggle-grid" class="icon-btn" aria-pressed="true" data-tip="Coordinate grid" data-key="G" aria-label="Toggle grid">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5" /><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17" /></svg>
+      </button>
+      <button id="toggle-trails" class="icon-btn" aria-pressed="true" data-tip="Particle trails" data-key="T" aria-label="Toggle trails">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19c3.5 0 4.5-12 9-12 3.6 0 3.8 6.5 6.2 6.5" /><circle cx="19.5" cy="13.5" r="2.2" class="fill" /></svg>
+      </button>
+      <button id="toggle-contours" class="icon-btn" aria-pressed="true" data-tip="Contour lines" data-key="L" aria-label="Toggle contour lines">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c5 0 8.5 3.6 8.5 8.2S17 20.5 12 20.5 3.5 16.7 3.5 12 7 3.5 12 3.5z" /><path d="M12 8c2.6 0 4.3 1.7 4.3 4s-1.7 4-4.3 4-4.3-1.8-4.3-4S9.4 8 12 8z" /></svg>
+      </button>
+
+      <span class="divider"></span>
+
+      <div class="menu-wrap">
+        <button id="menu-btn" class="icon-btn" aria-haspopup="true" aria-expanded="false" data-tip="Scene &amp; presets" aria-label="Scene menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 8.3l-9 4.8-9-4.8z" /><path d="m3 12.2 9 4.8 9-4.8" /><path d="m3 16 9 4.8 9-4.8" /></svg>
+        </button>
+        <div id="menu" class="menu card" role="menu" hidden>
+          <div class="menu-label">Presets</div>
+          <button role="menuitem" data-preset="double-well"><span class="sw sw-dw"></span>Double well</button>
+          <button role="menuitem" data-preset="ring"><span class="sw sw-ring"></span>Ring</button>
+          <button role="menuitem" data-preset="landscape"><span class="sw sw-rand"></span>Random landscape</button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-action="clear-particles">Clear particles<kbd>C</kbd></button>
+          <button role="menuitem" data-action="clear-field">Clear potential<kbd>X</kbd></button>
+          <button role="menuitem" data-action="reset-view">Reset view<kbd>R</kbd></button>
+        </div>
+      </div>
+      <button id="help-btn" class="icon-btn" data-tip="Help" data-key="?" aria-label="Help">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.8" /><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.7.35-1.2.9-1.2 1.7v.5" /><circle cx="12" cy="16.9" r="1" class="fill" /></svg>
+      </button>
+    </div>
+
+    <!-- Parameters -->
+    <div class="panel card" id="panel">
+      <label class="field">
+        <span class="field-head"><span>Diffusivity <i class="math">σ</i></span><output id="sigma-out"></output></span>
+        <input type="range" id="sigma" min="0" max="1" step="0.001" />
+      </label>
+      <label class="field">
+        <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
+        <input type="range" id="speed" min="0" max="1" step="0.001" />
+      </label>
+      <div class="mode-only" data-for="brush">
+        <div class="panel-sep"></div>
+        <label class="field">
+          <span class="field-head"><span>Brush size</span><output id="brush-size-out"></output></span>
+          <input type="range" id="brush-size" min="0" max="1" step="0.001" />
+        </label>
+        <label class="field">
+          <span class="field-head"><span>Brush strength</span><output id="brush-strength-out"></output></span>
+          <input type="range" id="brush-strength" min="0" max="1" step="0.001" />
+        </label>
+      </div>
+      <div class="mode-only" data-for="particles">
+        <div class="panel-sep"></div>
+        <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
+        <button id="clear-particles" class="ghost-btn">Clear particles</button>
+      </div>
+    </div>
+
+    <!-- Colour legend + readout -->
+    <div class="legend card" aria-label="Colour scale of the potential">
+      <div class="legend-bar" id="legend-bar"></div>
+      <div class="legend-ticks"><span id="legend-min"></span><span>Ψ = 0</span><span id="legend-max"></span></div>
+      <div class="readout" id="readout"></div>
+    </div>
+
+    <!-- Contextual hint -->
+    <div class="hint" id="hint" aria-live="polite"></div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status"></div>
+
+    <!-- Help dialog -->
+    <div class="modal" id="help" hidden>
+      <div class="modal-card card" role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <button class="modal-close icon-btn" id="help-close" aria-label="Close help">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+        <h2 id="help-title">Potential SDE</h2>
+        <p class="lead">
+          Every particle follows the overdamped Langevin equation
+          <span class="eq">dX<sub>t</sub> = −∇Ψ(X<sub>t</sub>) dt + σ dW<sub>t</sub></span>
+          It slides downhill on the landscape Ψ while Brownian motion with diffusivity σ shakes it.
+          <span class="swatch hot"></span> warm areas are hills (Ψ &gt; 0) and push particles away,
+          <span class="swatch cold"></span> cool areas are valleys (Ψ &lt; 0) and attract them. |Ψ| is capped at <span id="help-cap"></span>.
+        </p>
+        <div class="help-grid">
+          <section>
+            <h3>Brush mode</h3>
+            <ul>
+              <li><b>Hold left mouse</b> to raise Ψ</li>
+              <li><b>Hold right mouse</b> to lower Ψ</li>
+              <li>The brush is a Gaussian: the circles show 1σ and 2σ</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Particle mode</h3>
+            <ul>
+              <li><b>Click</b> to drop a particle</li>
+              <li><b>Shift + drag</b> to spray many</li>
+              <li><b>Right click</b> a particle to remove it</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Navigation</h3>
+            <ul>
+              <li><b>Hold mouse wheel + drag</b> to pan</li>
+              <li><b>Alt + drag</b> also pans (trackpads)</li>
+              <li><b>Scroll</b> to zoom</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Shortcuts</h3>
+            <ul class="keys">
+              <li><kbd>Space</kbd> Play / pause</li>
+              <li><kbd>B</kbd> Brush · <kbd>P</kbd> Particles</li>
+              <li><kbd>G</kbd> Grid · <kbd>T</kbd> Trails · <kbd>L</kbd> Contours</li>
+              <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
+              <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>
+            </ul>
+          </section>
+        </div>
+        <p class="fineprint">
+          Integrated with the stochastic Heun scheme (strong order 1 for additive noise) using sub-steps of
+          2&nbsp;ms of simulated time (up to 10&nbsp;ms when thousands of particles have to share the frame budget).
+          Ψ lives on a grid with spacing h = 0.04; its gradient is computed with central differences and interpolated
+          continuously between grid nodes.
+        </p>
+      </div>
+    </div>
+
+    <div class="fatal" id="fatal" hidden></div>
+
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
