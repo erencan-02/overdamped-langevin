@@ -11,6 +11,18 @@ particles away, valleys (cool colours, $\Psi<0$) attract them, and Brownian nois
 $\sigma$ shakes them around. Everything can be changed while the simulation is running.
 
 It is a static site with no backend, so it runs on GitHub Pages.
+**Try it live: <https://erencan-02.github.io/potential-sde/>**
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/landscape.gif" alt="100 particles drifting into the valleys of a random potential landscape" width="100%"></td>
+    <td width="50%"><img src="docs/media/landscape-force-field.gif" alt="The same run with the force field −∇Ψ drawn as arrows" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Random landscape, 100 particles, σ = 0.6</sub></td>
+    <td align="center"><sub>Same run with the force field −∇Ψ switched on</sub></td>
+  </tr>
+</table>
 
 ## Using it
 
