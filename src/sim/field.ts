@@ -15,8 +15,12 @@
 export const CHUNK = 128;
 const CHUNK_MASK = CHUNK - 1;
 const CHUNK_SHIFT = 7; // log2(CHUNK)
-const KEY_OFFSET = 2 ** 24; // chunk coords of any int32 node index fit
-const KEY_SPAN = 2 ** 25;
+/**
+ * Chunk coordinates are limited to ±CHUNK_LIMIT (≈ ±84 000 world units at h = 0.04) so that
+ * chunk keys stay small integers (V8 "Smi"s), which keeps Map lookups fast.
+ */
+export const CHUNK_LIMIT = (1 << 14) - 1;
+const KEY_OFFSET = 1 << 14;
 
 export interface FieldOptions {
   /** Lattice spacing h in world units. */
@@ -36,8 +40,10 @@ export class Chunk {
   ) {}
 }
 
+/** Integer key of chunk (cx, cy), or −1 if it lies outside the supported range. */
 export function chunkKey(cx: number, cy: number): number {
-  return (cx + KEY_OFFSET) * KEY_SPAN + (cy + KEY_OFFSET);
+  if (cx < -CHUNK_LIMIT || cx > CHUNK_LIMIT || cy < -CHUNK_LIMIT || cy > CHUNK_LIMIT) return -1;
+  return ((cx + KEY_OFFSET) << 15) | (cy + KEY_OFFSET);
 }
 
 export class PotentialField {
@@ -54,8 +60,16 @@ export class PotentialField {
   /** Bumped by `clear()` so consumers can drop everything they cached. */
   epoch = 0;
 
-  private lastKey = -1;
-  private lastChunk: Chunk | undefined = undefined;
+  /**
+   * Dense lookup table over the bounding box of all allocated chunks. Chunk lookups are on the
+   * hot path of the integrator (two drift evaluations per particle and step), and a plain array
+   * index is several times faster than a Map lookup.
+   */
+  private index: (Chunk | null)[] = [];
+  private indexX0 = 0;
+  private indexY0 = 0;
+  private indexW = 0;
+  private indexH = 0;
 
   constructor(opts: FieldOptions) {
     this.h = opts.cellSize;
@@ -65,13 +79,11 @@ export class PotentialField {
 
   // ---------------------------------------------------------------- chunk access
 
-  getChunk(cx: number, cy: number): Chunk | undefined {
-    const key = chunkKey(cx, cy);
-    if (key === this.lastKey) return this.lastChunk;
-    const c = this.chunks.get(key);
-    this.lastKey = key;
-    this.lastChunk = c;
-    return c;
+  getChunk(cx: number, cy: number): Chunk | null {
+    const gx = cx - this.indexX0;
+    const gy = cy - this.indexY0;
+    if (gx < 0 || gy < 0 || gx >= this.indexW || gy >= this.indexH) return null;
+    return this.index[gy * this.indexW + gx];
   }
 
   private ensureChunk(cx: number, cy: number): Chunk {
@@ -80,10 +92,43 @@ export class PotentialField {
       const key = chunkKey(cx, cy);
       c = new Chunk(cx, cy, key);
       this.chunks.set(key, c);
-      this.lastKey = key;
-      this.lastChunk = c;
+      const gx = cx - this.indexX0;
+      const gy = cy - this.indexY0;
+      if (gx < 0 || gy < 0 || gx >= this.indexW || gy >= this.indexH) {
+        this.rebuildIndex(cx, cy);
+      } else {
+        this.index[gy * this.indexW + gx] = c;
+      }
     }
     return c;
+  }
+
+  /** Grows the lookup table so that it covers all chunks plus (cx, cy), with some slack. */
+  private rebuildIndex(cx: number, cy: number): void {
+    const PAD = 4;
+    let x0 = cx;
+    let x1 = cx;
+    let y0 = cy;
+    let y1 = cy;
+    if (this.indexW > 0) {
+      x0 = Math.min(x0, this.indexX0);
+      y0 = Math.min(y0, this.indexY0);
+      x1 = Math.max(x1, this.indexX0 + this.indexW - 1);
+      y1 = Math.max(y1, this.indexY0 + this.indexH - 1);
+    }
+    x0 -= PAD;
+    y0 -= PAD;
+    x1 += PAD;
+    y1 += PAD;
+    const w = x1 - x0 + 1;
+    const hgt = y1 - y0 + 1;
+    const index = new Array<Chunk | null>(w * hgt).fill(null);
+    for (const c of this.chunks.values()) index[(c.cy - y0) * w + (c.cx - x0)] = c;
+    this.index = index;
+    this.indexX0 = x0;
+    this.indexY0 = y0;
+    this.indexW = w;
+    this.indexH = hgt;
   }
 
   private markDirty(cx: number, cy: number): void {
@@ -98,8 +143,9 @@ export class PotentialField {
   clear(): void {
     this.chunks.clear();
     this.dirty.clear();
-    this.lastKey = -1;
-    this.lastChunk = undefined;
+    this.index = [];
+    this.indexW = 0;
+    this.indexH = 0;
     this.epoch++;
   }
 
@@ -255,6 +301,7 @@ export class PotentialField {
     const ci1 = (i1 + 1) >> CHUNK_SHIFT;
     const cj0 = (j0 - 1) >> CHUNK_SHIFT;
     const cj1 = (j1 + 1) >> CHUNK_SHIFT;
+    if (chunkKey(ci0, cj0) < 0 || chunkKey(ci1, cj1) < 0) return; // outside the supported plane
     for (let cy = cj0; cy <= cj1; cy++) {
       for (let cx = ci0; cx <= ci1; cx++) {
         this.ensureChunk(cx, cy);
