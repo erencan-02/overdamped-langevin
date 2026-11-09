@@ -8,6 +8,11 @@ export const TRAIL_LEN = 40;
 export const TRAIL_DT = 1 / 50;
 /** Largest internal time step of the integrator. */
 export const DEFAULT_DT_MAX = 1 / 500;
+/**
+ * Largest step the integrator will ever take. If the work budget cannot afford steps this
+ * small, the simulation runs slower than requested rather than becoming inaccurate.
+ */
+export const DT_LIMIT = 1 / 100;
 /** Upper bound on sub-steps per frame so a frame can never stall the UI. */
 const MAX_SUBSTEPS = 160;
 /**
@@ -41,6 +46,13 @@ export class ParticleSystem {
   readonly trailCount = new Uint16Array(MAX_PARTICLES);
   /** Slot that holds the most recent trail point (shared by all particles). */
   trailHead = 0;
+  /** Number of trail recordings so far (each one writes slot `trailHead` of every particle). */
+  trailWrites = 0;
+  /**
+   * Incremented when existing trail rows change other than by a recording (removal, reset),
+   * telling the renderer to re-upload the whole ring buffer.
+   */
+  trailLayout = 0;
 
   count = 0;
   /** Simulated time. */
@@ -80,6 +92,7 @@ export class ParticleSystem {
       this.trailCount[i] = this.trailCount[last];
       const n = TRAIL_LEN * 2;
       this.trail.copyWithin(i * n, last * n, last * n + n);
+      this.trailLayout++;
     }
     this.version++;
   }
@@ -107,11 +120,14 @@ export class ParticleSystem {
 
   clearTrails(): void {
     this.trailCount.fill(0);
+    this.trailLayout++;
     this.version++;
   }
 
   /**
-   * Advances the ensemble by simulated time T using sub-steps no longer than dtMax.
+   * Advances the ensemble by simulated time T using sub-steps no longer than dtMax, doing at
+   * most `workBudget` particle-steps. Returns the simulated time actually advanced (less than T
+   * only if the budget would force steps above DT_LIMIT).
    */
   advance(
     field: PotentialField,
@@ -119,10 +135,11 @@ export class ParticleSystem {
     sigma: number,
     dtMax = DEFAULT_DT_MAX,
     workBudget = DEFAULT_WORK_BUDGET,
-  ): void {
-    if (!(T > 0)) return;
+  ): number {
+    if (!(T > 0)) return 0;
     const affordable = Math.floor(workBudget / Math.max(1, this.count));
     const n = Math.max(1, Math.min(MAX_SUBSTEPS, affordable, Math.ceil(T / dtMax)));
+    if (T / n > DT_LIMIT) T = n * DT_LIMIT;
     const dt = T / n;
     for (let s = 0; s < n; s++) {
       this.step(field, dt, sigma);
@@ -134,7 +151,12 @@ export class ParticleSystem {
       }
     }
     this.time += T;
+    this.lastSubsteps = n;
+    return T;
   }
+
+  /** Number of sub-steps taken by the last `advance` call. */
+  lastSubsteps = 0;
 
   /** One stochastic Heun step of size dt for every particle. */
   step(field: PotentialField, dt: number, sigma: number): void {
@@ -168,6 +190,7 @@ export class ParticleSystem {
   private recordTrail(): void {
     const head = (this.trailHead + 1) % TRAIL_LEN;
     this.trailHead = head;
+    this.trailWrites++;
     const { x, y, trail, trailCount } = this;
     for (let i = 0, n = this.count; i < n; i++) {
       const k = (i * TRAIL_LEN + head) * 2;

@@ -1,6 +1,6 @@
 import { PALETTE_RGB } from '../config';
 import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
-import { type ParticleSystem, TRAIL_LEN } from '../sim/particles';
+import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
 import type { Camera } from '../view/camera';
 import { gridSpacing } from '../view/gridSpacing';
 import { createBuffer, createProgram, type Program } from './gl';
@@ -17,7 +17,7 @@ import {
 
 /** Nodes per texture side: a chunk's own nodes plus the first row/column of its neighbours. */
 const TEX_N = CHUNK + 1;
-const POINT_FLOATS = 4; // trail point: x, y, age, colour
+const INST_FLOATS = 4; // particle instance: x, y, colour, stored trail points
 
 export interface RenderOptions {
   grid: boolean;
@@ -27,7 +27,7 @@ export interface RenderOptions {
 
 /**
  * WebGL2 renderer: potential heat map (one R16F texture per chunk), procedural grid,
- * particle trails (instanced quads) and particles (instanced point sprites).
+ * particle trails (ring buffer kept on the GPU) and particles (instanced point sprites).
  */
 export class Renderer {
   readonly gl: WebGL2RenderingContext;
@@ -41,16 +41,17 @@ export class Renderer {
   private readonly trailVao: WebGLVertexArrayObject;
   private readonly particleVao: WebGLVertexArrayObject;
 
-  private readonly trailBuffer: WebGLBuffer;
   private readonly particleBuffer: WebGLBuffer;
-  private trailCapacity = 0; // in points
-  private particleCapacity = 0; // in particles
-  private trailData = new Float32Array(0);
-  private particleData = new Float32Array(0);
-  private trailInstances = 0;
+  private readonly particleData = new Float32Array(MAX_PARTICLES * INST_FLOATS);
   private particleInstances = 0;
   private uploadedVersion = -1;
-  private uploadedTrails = false;
+
+  /** Trail ring buffer: RG32F texture, one row per particle, one column per ring slot. */
+  private readonly ringTex: WebGLTexture;
+  private readonly column = new Float32Array(MAX_PARTICLES * 2);
+  private uploadedWrites = -1;
+  private uploadedLayout = -1;
+  private headSlot = 0;
 
   private readonly textures = new Map<number, WebGLTexture>();
   private fieldEpoch = -1;
@@ -85,23 +86,28 @@ export class Renderer {
     // Grid: full-screen triangle generated from gl_VertexID.
     this.gridVao = gl.createVertexArray()!;
 
-    // Trails: per-vertex corner + per-instance (p_i, p_{i+1}) read from one buffer with an
-    // offset of one point, so N points give N − 1 segments without duplicating data.
-    this.trailVao = gl.createVertexArray()!;
-    gl.bindVertexArray(this.trailVao);
-    createBuffer(gl, new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]));
-    this.enableAttrib(this.trailProg, 'a_corner', 2, 0, 0, 0);
-    this.trailBuffer = createBuffer(gl, 16, gl.DYNAMIC_DRAW);
-    this.enableAttrib(this.trailProg, 'a_p0', 4, POINT_FLOATS * 4, 0, 1);
-    this.enableAttrib(this.trailProg, 'a_p1', 4, POINT_FLOATS * 4, POINT_FLOATS * 4, 1);
-
-    // Particles: per-vertex corner + per-instance (x, y, colour).
+    // Particles: per-vertex corner + per-instance (x, y, colour, trail length).
     this.particleVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.particleVao);
     createBuffer(gl, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
     this.enableAttrib(this.particleProg, 'a_corner', 2, 0, 0, 0);
-    this.particleBuffer = createBuffer(gl, 16, gl.DYNAMIC_DRAW);
-    this.enableAttrib(this.particleProg, 'a_inst', 3, 12, 0, 1);
+    this.particleBuffer = createBuffer(gl, this.particleData.byteLength, gl.DYNAMIC_DRAW);
+    this.enableAttrib(this.particleProg, 'a_inst', 3, INST_FLOATS * 4, 0, 1);
+
+    // Trails: no per-vertex data (gl_VertexID), the same per-instance particle data.
+    this.trailVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.trailVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
+    this.enableAttrib(this.trailProg, 'a_inst', 4, INST_FLOATS * 4, 0, 1);
+
+    this.ringTex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.ringTex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, TRAIL_LEN, MAX_PARTICLES);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
 
     gl.bindVertexArray(null);
     gl.disable(gl.DEPTH_TEST);
@@ -135,7 +141,8 @@ export class Renderer {
     }
   }
 
-  dispose(): void {
+  /** Releases the field textures (they are re-created on demand). */
+  private dropFieldTextures(): void {
     for (const t of this.textures.values()) this.gl.deleteTexture(t);
     this.textures.clear();
   }
@@ -156,8 +163,11 @@ export class Renderer {
 
     gl.enable(gl.BLEND);
     if (opts.grid) this.drawGrid(cam, scale, W, H);
-    this.uploadParticles(ps, opts.trails);
-    if (opts.trails && this.trailInstances > 0) this.drawTrails(cam, scale, W, H);
+    this.uploadParticles(ps);
+    if (opts.trails && this.particleInstances > 0) {
+      this.uploadTrails(ps);
+      this.drawTrails(cam, scale, W, H);
+    }
     if (this.particleInstances > 0) this.drawParticles(cam, scale, W, H);
     gl.disable(gl.BLEND);
   }
@@ -167,7 +177,7 @@ export class Renderer {
   private syncTextures(field: PotentialField): void {
     const gl = this.gl;
     if (field.epoch !== this.fieldEpoch) {
-      this.dispose();
+      this.dropFieldTextures();
       this.fieldEpoch = field.epoch;
     }
     for (const c of field.chunks.values()) {
@@ -283,67 +293,53 @@ export class Renderer {
 
   // ---------------------------------------------------------------- particles & trails
 
-  private uploadParticles(ps: ParticleSystem, trails: boolean): void {
-    if (ps.version === this.uploadedVersion && trails === this.uploadedTrails) return;
+  private uploadParticles(ps: ParticleSystem): void {
+    if (ps.version === this.uploadedVersion) return;
     this.uploadedVersion = ps.version;
-    this.uploadedTrails = trails;
-    const gl = this.gl;
     const n = ps.count;
-
-    // Particles
-    if (this.particleData.length < n * 3) this.particleData = new Float32Array(Math.max(64, n * 3 * 2));
-    const pd = this.particleData;
-    for (let i = 0; i < n; i++) {
-      pd[i * 3] = ps.x[i];
-      pd[i * 3 + 1] = ps.y[i];
-      pd[i * 3 + 2] = ps.color[i];
+    const d = this.particleData;
+    for (let i = 0, k = 0; i < n; i++, k += INST_FLOATS) {
+      d[k] = ps.x[i];
+      d[k + 1] = ps.y[i];
+      d[k + 2] = ps.color[i];
+      d[k + 3] = ps.trailCount[i];
     }
+    const gl = this.gl;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
-    if (n > this.particleCapacity) {
-      this.particleCapacity = Math.max(64, n * 2);
-      gl.bufferData(gl.ARRAY_BUFFER, this.particleCapacity * 12, gl.DYNAMIC_DRAW);
-    }
-    if (n > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, pd, 0, n * 3);
+    if (n > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, n * INST_FLOATS);
     this.particleInstances = n;
+  }
 
-    // Trails: per particle the current position (age 0) followed by its history (ages 1..k).
-    if (!trails) {
-      this.trailInstances = 0;
-      return;
-    }
-    const maxPoints = n * (TRAIL_LEN + 1);
-    if (this.trailData.length < maxPoints * POINT_FLOATS) {
-      this.trailData = new Float32Array(Math.max(256, maxPoints * POINT_FLOATS * 2));
-    }
-    const td = this.trailData;
-    const { trail, trailCount, trailHead } = ps;
-    let w = 0;
-    for (let i = 0; i < n; i++) {
-      const k = trailCount[i];
-      if (k === 0) continue;
-      const col = ps.color[i];
-      td[w++] = ps.x[i];
-      td[w++] = ps.y[i];
-      td[w++] = 0;
-      td[w++] = col;
-      const base = i * TRAIL_LEN;
-      for (let a = 0; a < k; a++) {
-        const slot = (trailHead - a + TRAIL_LEN) % TRAIL_LEN;
-        const s = (base + slot) * 2;
-        td[w++] = trail[s];
-        td[w++] = trail[s + 1];
-        td[w++] = a + 1;
-        td[w++] = col;
+  /**
+   * Brings the GPU copy of the trail ring buffer up to date. Normally only the columns written
+   * since the last frame are uploaded (one float pair per particle and recording); after a
+   * removal or reset the whole buffer is sent once.
+   */
+  private uploadTrails(ps: ParticleSystem): void {
+    const n = ps.count;
+    const pending = ps.trailWrites - this.uploadedWrites;
+    this.headSlot = ps.trailHead;
+    if (pending === 0 && ps.trailLayout === this.uploadedLayout) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.ringTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    if (ps.trailLayout !== this.uploadedLayout || pending >= TRAIL_LEN || pending < 0) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TRAIL_LEN, n, gl.RG, gl.FLOAT, ps.trail, 0);
+    } else {
+      const col = this.column;
+      for (let w = pending - 1; w >= 0; w--) {
+        const slot = (ps.trailHead - w + TRAIL_LEN) % TRAIL_LEN;
+        for (let i = 0; i < n; i++) {
+          const k = (i * TRAIL_LEN + slot) * 2;
+          col[i * 2] = ps.trail[k];
+          col[i * 2 + 1] = ps.trail[k + 1];
+        }
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, slot, 0, 1, n, gl.RG, gl.FLOAT, col, 0);
       }
     }
-    const points = w / POINT_FLOATS;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.trailBuffer);
-    if (points > this.trailCapacity) {
-      this.trailCapacity = Math.max(256, points * 2);
-      gl.bufferData(gl.ARRAY_BUFFER, this.trailCapacity * POINT_FLOATS * 4, gl.DYNAMIC_DRAW);
-    }
-    if (w > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, td, 0, w);
-    this.trailInstances = Math.max(0, points - 1);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.uploadedWrites = ps.trailWrites;
+    this.uploadedLayout = ps.trailLayout;
   }
 
   private setView(p: Program, cam: Camera, scale: number, W: number, H: number): void {
@@ -360,19 +356,24 @@ export class Renderer {
     gl.useProgram(p.program);
     gl.bindVertexArray(this.trailVao);
     this.setView(p, cam, scale, W, H);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.ringTex);
+    gl.uniform1i(p.uniforms.u_ring, 0);
+    gl.uniform1i(p.uniforms.u_head, this.headSlot);
+    gl.uniform1i(p.uniforms.u_len, TRAIL_LEN);
     gl.uniform1f(p.uniforms.u_width, 2.2 * this.dpr);
-    gl.uniform1f(p.uniforms.u_maxAge, TRAIL_LEN + 1);
     gl.uniform1f(p.uniforms.u_alpha, 0.6);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.trailInstances);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, TRAIL_LEN * 6, this.particleInstances);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   private drawParticles(cam: Camera, scale: number, W: number, H: number): void {
     const gl = this.gl;
     const p = this.particleProg;
     const dpr = this.dpr;
-    const radius = 5 * dpr;
-    const ring = 1.6 * dpr;
-    const halo = 2 * dpr;
+    const radius = 5.5 * dpr;
+    const ring = 1.8 * dpr;
+    const halo = 3 * dpr;
     gl.useProgram(p.program);
     gl.bindVertexArray(this.particleVao);
     this.setView(p, cam, scale, W, H);
