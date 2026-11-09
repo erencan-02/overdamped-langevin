@@ -4,6 +4,7 @@ import { imageToPotential } from '../sim/imagePotential';
 import type { Camera } from '../view/camera';
 import { type DecodedImage, decodeSource, isImageFile } from './decode';
 import type { WorkerRequest } from './decode.worker';
+import { writePotential } from './writePotential';
 
 /** Width of the smoothing blur in world units (≈ 3 grid cells, see imagePotential.ts). */
 const BLUR_WORLD = 0.12;
@@ -237,33 +238,12 @@ export class ImageImporter {
     const grid = imageToPotential(image, { depth: PSI_CAP, invert: inverted, blur: BLUR_WORLD / h });
     if (!grid) return false;
 
-    // Pixel (i, j) of the image (rows top to bottom) sits at the node (x0 + i·h, yTop − j·h).
+    // One sample per lattice node: pixel (i, j) (rows top to bottom) sits at (x0 + i·h, yTop − j·h).
     const x0 = Math.round((cx - image.worldWidth / 2) / h) * h;
     const yTop = Math.round((cy + image.worldHeight / 2) / h) * h;
-    const { width: W, height: H, pad, values } = grid;
-    const sample = (x: number, y: number): number => {
-      const u = (x - x0) / h + pad;
-      const v = (yTop - y) / h + pad;
-      const i = Math.floor(u);
-      const j = Math.floor(v);
-      if (i < 0 || j < 0 || i >= W - 1 || j >= H - 1) return 0;
-      const fx = u - i;
-      const fy = v - j;
-      const k = j * W + i;
-      const a = values[k] + (values[k + 1] - values[k]) * fx;
-      const b = values[k + W] + (values[k + W + 1] - values[k + W]) * fx;
-      return a + (b - a) * fy;
-    };
-
     field.clear();
-    field.addFunction(x0 - pad * h, yTop - (H - pad) * h, x0 + (W - pad) * h, yTop + pad * h, sample);
-
-    // Make sure the whole image is in view.
-    const cam = this.camera;
-    const fit = Math.min(cam.width / (image.worldWidth * 1.15), cam.height / (image.worldHeight * 1.15));
-    cam.x = x0 + image.worldWidth / 2;
-    cam.y = yTop - image.worldHeight / 2;
-    if (cam.scale > fit) cam.zoomAt(cam.width / 2, cam.height / 2, fit / cam.scale);
+    writePotential(field, grid, { x0, yTop, cell: h });
+    this.camera.showRect(x0, yTop - image.worldHeight, x0 + image.worldWidth, yTop);
     return true;
   }
 }

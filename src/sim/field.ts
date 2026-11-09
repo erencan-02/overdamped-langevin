@@ -281,6 +281,20 @@ export class PotentialField {
   }
 
   /**
+   * Overwrites Ψ with f(x, y) at every node inside a rectangle (clamped to the cap). Used to
+   * write image and camera potentials, which replace rather than add to what is there.
+   */
+  setFunction(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    f: (x: number, y: number) => number,
+  ): void {
+    this.modifyRegion(x0, y0, x1, y1, (wx, wy) => f(wx, wy));
+  }
+
+  /**
    * Applies `update` to every node inside the world rectangle, clamps to the cap and then
    * recomputes the nodal gradient where it may have changed.
    */

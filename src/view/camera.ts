@@ -48,6 +48,16 @@ export class Camera {
     this.y = wy + (sy - this.height / 2) / this.scale;
   }
 
+  /**
+   * Centres the view on a world rectangle and zooms out (never in) until it fits with a margin.
+   */
+  showRect(x0: number, y0: number, x1: number, y1: number, margin = 1.15): void {
+    this.x = (x0 + x1) / 2;
+    this.y = (y0 + y1) / 2;
+    const fit = Math.min(this.width / ((x1 - x0) * margin), this.height / ((y1 - y0) * margin));
+    if (this.scale > fit) this.zoomAt(this.width / 2, this.height / 2, fit / this.scale);
+  }
+
   reset(): void {
     this.x = 0;
     this.y = 0;

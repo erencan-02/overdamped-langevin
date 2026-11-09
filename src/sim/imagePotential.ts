@@ -27,6 +27,17 @@ export interface ImagePotentialOptions {
   invert: boolean;
   /** Standard deviation of the smoothing blur, in samples. */
   blur: number;
+  /**
+   * Darkness range mapped to [0, 1]. Defaults to `darknessLevels(img)`; video passes a range
+   * smoothed over frames so that the potential does not flicker with automatic exposure.
+   */
+  levels?: DarknessLevels;
+}
+
+/** Darkness (1 − lightness) values mapped to flat (`lo`) and to the full depth (`hi`). */
+export interface DarknessLevels {
+  lo: number;
+  hi: number;
 }
 
 /** Potential on a grid that extends the image by `pad` samples on every side (rows top to bottom). */
@@ -41,15 +52,16 @@ export interface PotentialGrid {
 const CLIP = 0.01;
 const BINS = 1024;
 
-/**
- * Returns the blurred potential, or `null` if the image has no usable contrast (e.g. a single
- * flat colour, or fully transparent).
- */
-export function imageToPotential(img: ImageSample, opts: ImagePotentialOptions): PotentialGrid | null {
-  const { width: w, height: h, lightness, alpha } = img;
-  const n = w * h;
+/** Smallest usable contrast (difference of the darkness levels). */
+export const MIN_CONTRAST = 0.02;
 
-  // Robust contrast stretch: map the 1st..99th percentile of darkness among opaque pixels to [0, 1].
+/**
+ * Robust contrast range: the 1st and 99th percentile of darkness among opaque pixels, or `null`
+ * if there are no opaque pixels.
+ */
+export function darknessLevels(img: ImageSample): DarknessLevels | null {
+  const { lightness, alpha } = img;
+  const n = img.width * img.height;
   const hist = new Uint32Array(BINS);
   let opaque = 0;
   for (let k = 0; k < n; k++) {
@@ -59,9 +71,18 @@ export function imageToPotential(img: ImageSample, opts: ImagePotentialOptions):
     opaque++;
   }
   if (opaque === 0) return null;
-  const lo = percentile(hist, opaque, CLIP);
-  const hi = percentile(hist, opaque, 1 - CLIP);
-  if (hi - lo < 0.02) return null;
+  return { lo: percentile(hist, opaque, CLIP), hi: percentile(hist, opaque, 1 - CLIP) };
+}
+
+/**
+ * Returns the blurred potential, or `null` if the image has no usable contrast (e.g. a single
+ * flat colour, or fully transparent).
+ */
+export function imageToPotential(img: ImageSample, opts: ImagePotentialOptions): PotentialGrid | null {
+  const { width: w, height: h, lightness, alpha } = img;
+  const levels = opts.levels ?? darknessLevels(img);
+  if (!levels || levels.hi - levels.lo < MIN_CONTRAST) return null;
+  const { lo, hi } = levels;
 
   const pad = Math.ceil(3 * opts.blur);
   const W = w + 2 * pad;

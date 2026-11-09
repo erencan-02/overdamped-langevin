@@ -1,4 +1,5 @@
 import { type ImageSample, importSize } from '../sim/imagePotential';
+import { rgbaToSample } from './pixels';
 
 /**
  * Turns a decoded image (ImageBitmap or <img>) into an `ImageSample` at the potential grid's
@@ -26,19 +27,6 @@ type Canvas2D = {
 };
 type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Source = CanvasImageSource;
-
-/** sRGB channel value (0–255) → linear light. */
-const LINEAR = new Float32Array(256);
-for (let v = 0; v < 256; v++) {
-  const c = v / 255;
-  LINEAR[v] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-}
-
-/** CIE L* / 100 from linear relative luminance Y. */
-function lightnessOf(Y: number): number {
-  const L = Y > 216 / 24389 ? 116 * Math.cbrt(Y) - 16 : (24389 / 27) * Y;
-  return L / 100;
-}
 
 export function decodeSource(
   source: Source,
@@ -71,16 +59,7 @@ export function decodeSource(
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(src, 0, 0, width, height);
-  const rgba = ctx.getImageData(0, 0, width, height).data;
-
-  const n = width * height;
-  const lightness = new Float32Array(n);
-  const alpha = new Float32Array(n);
-  for (let k = 0, p = 0; k < n; k++, p += 4) {
-    const Y = 0.2126 * LINEAR[rgba[p]] + 0.7152 * LINEAR[rgba[p + 1]] + 0.0722 * LINEAR[rgba[p + 2]];
-    lightness[k] = lightnessOf(Y);
-    alpha[k] = rgba[p + 3] / 255;
-  }
+  const { lightness, alpha } = rgbaToSample(ctx.getImageData(0, 0, width, height).data, width, height);
   return {
     width,
     height,
