@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { npyArray, npyString } from '../src/record/npz';
 import { parseNpy, readNpz } from '../src/record/npzRead';
+import { Playback } from '../src/record/playback';
 import { Recorder } from '../src/record/recorder';
 import { RecordingError, RecordingTimeline } from '../src/record/timeline';
 import { ParticlesComponent, PotentialComponent } from '../src/session/components';
@@ -116,5 +117,83 @@ describe('recording → file → playback', () => {
     expect(() => new RecordingTimeline(new Map())).toThrow(/not a recording/);
     const arrays = await readNpz(other);
     expect(() => new RecordingTimeline(arrays)).toThrow(RecordingError);
+  });
+});
+
+describe('Playback controller', () => {
+  async function recorded() {
+    const a = app(1);
+    a.field.applyBrush(0, 0, -2, 0.6);
+    for (let i = 0; i < 10; i++) a.ps.add(i * 0.1, 0, i);
+    const rec = new Recorder({ field: a.field, particles: a.ps, params: () => ({ ...a.state, playing: true }) });
+    let now = 0;
+    rec.start(now, { x0: -1, y0: -1, x1: 1, y1: 1 });
+    for (let k = 0; k < 10; k++) {
+      a.ps.advance(a.field, 0.05, 0.5);
+      now += 100; // 10 frames per second of wall-clock time
+      rec.tick(now);
+    }
+    const run = rec.stop(now + 1)!;
+    return new RecordingTimeline(await readNpz(await run.toNpz()));
+  }
+
+  it('shows frames, plays at recorded speed, and exits when the user alters the simulation', async () => {
+    const timeline = await recorded();
+    const b = app(0);
+    const events: string[] = [];
+    const pb = new Playback(b.session, {
+      onEnter: () => events.push('enter'),
+      onFrame: (k) => events.push(`frame ${k}`),
+      onPlayingChange: (p) => events.push(p ? 'play' : 'pause'),
+      onExit: () => events.push('exit'),
+    });
+    pb.enter(timeline);
+    expect(pb.active).toBe(true);
+    expect(pb.frame).toBe(0);
+    expect(b.ps.time).toBe(timeline.t[0]);
+
+    pb.play(1000);
+    pb.update(1000 + 350); // 0.35 s of wall-clock time later
+    expect(pb.frame).toBe(timeline.frameAtWall(timeline.wall[0] + 0.35));
+    expect(pb.frame).toBeGreaterThanOrEqual(3);
+    pb.update(1000 + 60_000); // far past the end: stops on the last frame
+    expect(pb.frame).toBe(timeline.frames - 1);
+    expect(pb.playing).toBe(false);
+
+    pb.seek(2);
+    expect(b.ps.time).toBe(timeline.t[2]);
+    pb.update(2000); // nothing changed → still in playback
+    expect(pb.active).toBe(true);
+
+    b.ps.add(5, 5, 0); // the user drops a particle
+    pb.update(2100);
+    expect(pb.active).toBe(false);
+    expect(events).toContain('exit');
+    expect(b.ps.time).toBe(timeline.t[2]); // the shown frame stays, ready to continue
+  });
+});
+
+describe('Ψ snapshots in playback', () => {
+  it('apply from the exact frame at which Ψ changed, whatever the clocks say', async () => {
+    const a = app(2);
+    a.field.applyBrush(0, 0, -2, 0.5);
+    a.ps.add(0, 0, 0);
+    const rec = new Recorder({ field: a.field, particles: a.ps, params: () => ({ ...a.state, playing: true }) });
+    rec.start(0, { x0: -2, y0: -2, x1: 2, y1: 2 });
+    for (let k = 1; k <= 5; k++) {
+      a.ps.advance(a.field, 0.05, 0.5);
+      rec.tick(k * 100);
+    }
+    a.field.applyBrush(1, 1, 2, 0.4); // Ψ changes after frame 5
+    rec.tick(900);
+    a.ps.advance(a.field, 0.05, 0.5);
+    rec.tick(1000);
+    const run = rec.stop(50)!; // a stop time from another clock: not monotonic
+    const t = new RecordingTimeline(await readNpz(await run.toNpz()));
+    const changed = run.psiFrame[1];
+    expect(t.potentialIndexAt(changed - 1)).toBe(0);
+    expect(t.potentialIndexAt(changed)).toBe(1);
+    expect(t.potentialIndexAt(t.frames - 1)).toBe(1);
+    expect(t.frameAtWall(1e9)).toBe(t.frames - 1);
   });
 });

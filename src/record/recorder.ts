@@ -74,6 +74,8 @@ export class Run {
   readonly psi: Float32Array[] = [];
   readonly psiT: number[] = [];
   readonly psiWall: number[] = [];
+  /** Frame index from which each Ψ snapshot applies. */
+  readonly psiFrame: number[] = [];
 
   // KL time series.
   readonly klT: number[] = [];
@@ -169,6 +171,7 @@ export class Run {
       psi: { dtype: '<f4', shape: [S, g.ny, g.nx], data: psi },
       psi_t: f8(this.psiT),
       psi_wall_time: f8(this.psiWall),
+      psi_frame: { dtype: '<i4', shape: [S], data: Int32Array.from(this.psiFrame) },
       psi_grid: {
         dtype: '<f8',
         shape: [3],
@@ -222,6 +225,7 @@ export class Run {
         psi: 'Psi snapshots, psi[s, j, i] at (psi_grid[0] + i*psi_grid[2], psi_grid[1] + j*psi_grid[2]) (S x ny x nx)',
         psi_t: 'simulated time of each Psi snapshot (S)',
         psi_wall_time: 'seconds since the recording started, per Psi snapshot (S)',
+        psi_frame: 'first frame at which each Psi snapshot applies (S)',
         psi_grid: '[x0, y0, spacing] of the Psi snapshots',
         kl_t: 'simulated time of each KL estimate (K)',
         kl: 'KL(rho_h || pi) (K)',
@@ -305,8 +309,11 @@ export class Recorder {
     const p = this.src.params();
     const wall = (nowMs - run.wallStart) / 1000;
 
+    // A Ψ snapshot always comes with a frame, so that it can be tied to an exact frame index.
+    const pKey = `${field.revision}|${field.epoch}`;
+    const psiDue = pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS);
     const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}`;
-    if (force || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
+    if (force || psiDue || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
       const n = ps.count;
@@ -329,8 +336,7 @@ export class Recorder {
       run.bytes += n * 20 + 96;
     }
 
-    const pKey = `${field.revision}|${field.epoch}`;
-    if (pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS)) {
+    if (psiDue) {
       this.lastPsi = nowMs;
       this.psiKey = pKey;
       const g = run.psiGrid;
@@ -342,6 +348,7 @@ export class Recorder {
       run.psi.push(snap);
       run.psiT.push(ps.time);
       run.psiWall.push(wall);
+      run.psiFrame.push(run.frames - 1);
       run.bytes += snap.byteLength;
     }
 

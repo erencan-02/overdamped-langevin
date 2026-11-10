@@ -87,6 +87,8 @@ type AnalysisKey = 'kernelVariance' | 'showDensity';
 export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
   readonly key = 'analysis';
   override readonly order = 20;
+  /** Viewing/analysis only: changing it does not count as altering the simulation. */
+  override readonly tracksChanges = false;
   protected readonly fields = [
     new NumberField('kernelVariance', ...RANGES.kernelVariance),
     new BooleanField('showDensity'),
@@ -99,6 +101,8 @@ type DisplayKey = 'grid' | 'trails' | 'contours' | 'forceField' | 'mode';
 export class DisplaySettings extends SettingsGroup<DisplayKey> {
   readonly key = 'display';
   override readonly order = 20;
+  /** Viewing/analysis only: changing it does not count as altering the simulation. */
+  override readonly tracksChanges = false;
   protected readonly fields = [
     new BooleanField('grid'),
     new BooleanField('trails'),
@@ -114,6 +118,8 @@ type ToolKey = 'brushRadius' | 'brushStrength' | 'particleSpacing';
 export class ToolSettings extends SettingsGroup<ToolKey> {
   readonly key = 'tools';
   override readonly order = 20;
+  /** Viewing/analysis only: changing it does not count as altering the simulation. */
+  override readonly tracksChanges = false;
   protected readonly fields = [
     new NumberField('brushRadius', ...RANGES.brushRadius),
     new NumberField('brushStrength', ...RANGES.brushStrength),

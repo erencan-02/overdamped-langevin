@@ -13,7 +13,21 @@ import { RecordingsPanel } from './ui/recordingsPanel';
 import { InputController } from './ui/input';
 import { EquilibriumMonitor } from './analysis/equilibrium';
 import { Recorder } from './record/recorder';
-import { ImageImporter } from './image/importer';
+import { ImageDropHandler, ImageImporter } from './image/importer';
+import { loadRecording, RecordingDropHandler } from './record/loader';
+import { Playback } from './record/playback';
+import { RecordingError } from './record/timeline';
+import {
+  AnalysisBoxComponent,
+  ParticlesComponent,
+  PotentialComponent,
+  ViewComponent,
+} from './session/components';
+import { Session } from './session/session';
+import { AnalysisSettings, DisplaySettings, PhysicsSettings, ToolSettings } from './session/settings';
+import { BusyOverlay } from './ui/busyOverlay';
+import { DropController } from './ui/dropzone';
+import { PlaybackBar } from './ui/playbackBar';
 import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
@@ -57,12 +71,11 @@ function main(): void {
     },
     setScheme(id: SchemeId) {
       if (id === state.scheme) return;
-      state.scheme = id;
-      particles.scheme = SCHEMES[id];
-      controls.sync();
+      session.apply({ physics: { scheme: id } }); // switches the integrator and refreshes the UI
       controls.showToast(`Scheme: ${SCHEMES[id].name}`);
     },
     togglePlay() {
+      if (playback.active) return; // the recording, not the simulation, is playing
       state.playing = !state.playing;
       controls.sync();
     },
@@ -83,6 +96,7 @@ function main(): void {
       liveCamera.toggle();
     },
     toggleRecording() {
+      if (playback.active) return;
       const now = performance.now();
       if (recorder.recording) {
         const run = recorder.stop(now);
@@ -119,6 +133,14 @@ function main(): void {
     importImage(target) {
       importer.openPicker(target);
     },
+    setSeed(seed: number) {
+      if (seed === state.seed) return;
+      session.apply({ physics: { seed } });
+      controls.showToast(`Seed ${seed}: all random streams restarted`);
+    },
+    openRecording() {
+      if (!busy.active) recordingInput.click();
+    },
     preset(name: string) {
       liveCamera.stop();
       applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets'));
@@ -137,6 +159,8 @@ function main(): void {
       seed: state.seed,
       playing: state.playing,
     }),
+    // Full settings for the metadata, so a recording restores the whole configuration.
+    settings: () => session.capture(['physics', 'analysis', 'display', 'tools', 'analysisBox', 'view']),
   });
   const recordings = new RecordingsPanel(recorder, {
     toast: (text, action) => controls.showToast(text, action),
@@ -150,6 +174,43 @@ function main(): void {
       klPanel.draw();
     },
   });
+
+  // Everything that can be captured, restored and replayed (see src/session/). Settings that
+  // change the simulation come first, then Ψ, particles, the analysis box and the view.
+  const syncUi = () => controls.sync();
+  const session = new Session()
+    .register(new PhysicsSettings(state, syncUi, particles, random))
+    .register(new AnalysisSettings(state, syncUi))
+    .register(new DisplaySettings(state, syncUi))
+    .register(new ToolSettings(state, syncUi))
+    .register(new PotentialComponent(field))
+    .register(new ParticlesComponent(particles))
+    .register(new AnalysisBoxComponent(monitor))
+    .register(new ViewComponent(camera));
+
+  // Playback of recorded runs: a floating player; altering the simulation leaves playback.
+  const playback: Playback = new Playback(session, {
+    onEnter: (timeline) => {
+      state.playing = false;
+      playerBar.show(timeline);
+      controls.setPlaybackLock(true);
+      controls.sync();
+      const region = timeline.psiRegion() ?? timeline.particleBounds();
+      if (region) camera.showRect(region.x0, region.y0, region.x1, region.y1);
+    },
+    onFrame: (k, jumped) => {
+      playerBar.setFrame(k);
+      if (jumped) monitor.reset(); // the KL curve restarts after a jump in time
+    },
+    onPlayingChange: (playing) => playerBar.setPlaying(playing),
+    onExit: () => {
+      playerBar.hide();
+      controls.setPlaybackLock(false);
+      controls.sync();
+      controls.showToast('Left playback: press play to continue the simulation from here');
+    },
+  });
+  const playerBar = new PlaybackBar(playback);
 
   input.onGridSpawned = (spawned, requested) => {
     if (spawned < requested) {
@@ -183,7 +244,8 @@ function main(): void {
     },
   );
 
-  const importer = new ImageImporter(field, particles, camera, random, {
+  const busy = new BusyOverlay();
+  const importer = new ImageImporter(field, particles, camera, random, busy, {
     onStart: (target) => {
       if (target === 'potential') liveCamera.stop(); // a dropped image replaces the live potential
       input.cancel();
@@ -203,11 +265,40 @@ function main(): void {
     onError: (message) => controls.showToast(message),
   });
 
+  // ---------------------------------------------------------------- recordings & drag and drop
+
+  const openRecording = async (file: File) => {
+    if (busy.active) return;
+    liveCamera.stop();
+    input.cancel();
+    controls.closeOverlays();
+    if (recorder.recording) actions.toggleRecording(); // keep what was being recorded
+    try {
+      const timeline = await loadRecording(file, busy);
+      playback.enter(timeline);
+      controls.showToast(`${timeline.name}: ${timeline.frames} frames loaded. Press play below.`);
+    } catch (err) {
+      console.error(err);
+      controls.showToast(err instanceof RecordingError ? err.message : 'This recording could not be loaded.');
+    }
+  };
+  const recordingInput = document.getElementById('recording-input') as HTMLInputElement;
+  recordingInput.addEventListener('change', () => {
+    const file = recordingInput.files?.[0];
+    recordingInput.value = '';
+    if (file) void openRecording(file);
+  });
+  new DropController(
+    [new ImageDropHandler(importer), new RecordingDropHandler((file) => void openRecording(file))],
+    () => busy.active,
+    (message) => controls.showToast(message),
+  );
+
   // ---------------------------------------------------------------- keyboard
 
   window.addEventListener('keydown', (e) => {
-    // While an image is being converted, the app accepts no input at all.
-    if (importer.busy) {
+    // While an image or a recording is loading, the app accepts no input at all.
+    if (busy.active) {
       e.preventDefault();
       return;
     }
@@ -216,7 +307,7 @@ function main(): void {
     const onButtonOrInput = target?.closest('button, input') ?? null;
     if (e.key === 'Escape') {
       input.cancel(); // e.g. abandons a spawn rectangle that is being dragged
-      controls.closeOverlays();
+      if (!controls.closeOverlays() && playback.active) playback.exit();
       return;
     }
     if (controls.helpOpen && e.key !== '?') return;
@@ -225,7 +316,10 @@ function main(): void {
         // Space would also "click" a focused button; take focus away and toggle once.
         e.preventDefault();
         if (onButtonOrInput) target?.blur();
-        if (!e.repeat) actions.togglePlay();
+        if (!e.repeat) {
+          if (playback.active) playback.toggle(performance.now());
+          else actions.togglePlay();
+        }
         break;
       case 'b':
       case 'B':
@@ -275,6 +369,10 @@ function main(): void {
       case 'R':
         if (e.shiftKey) actions.toggleRecording();
         else actions.resetView();
+        break;
+      case 'o':
+      case 'O':
+        actions.openRecording();
         break;
       case 'd':
       case 'D':
@@ -328,6 +426,8 @@ function main(): void {
     last = now;
 
     input.update(dt);
+    // Playback first: it notices if the user just altered the simulation and leaves.
+    playback.update(now);
     if (state.playing && particles.count > 0) {
       // Adapt the per-frame work budget to the measured cost of one drift evaluation so the
       // simulation never takes more than ~SIM_MS_PER_FRAME, whatever the device or scheme.
@@ -401,6 +501,8 @@ function main(): void {
       liveCamera,
       monitor,
       recorder,
+      session,
+      playback,
       get renderer() {
         return renderer;
       },

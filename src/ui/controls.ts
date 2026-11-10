@@ -11,6 +11,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 export interface ControlActions {
   setMode(mode: Mode): void;
   setScheme(id: SchemeId): void;
+  setSeed(seed: number): void;
+  openRecording(): void;
   togglePlay(): void;
   toggleGrid(): void;
   toggleTrails(): void;
@@ -67,6 +69,12 @@ export class Controls {
       b.addEventListener('click', () => actions.setScheme(b.dataset.scheme as SchemeId));
     }
     this.play.addEventListener('click', () => actions.togglePlay());
+    const seed = $<HTMLInputElement>('seed');
+    seed.addEventListener('change', () => {
+      const v = Number(seed.value);
+      if (Number.isInteger(v) && v >= 0 && v <= 0xffffffff) actions.setSeed(v);
+      else seed.value = String(this.state.seed);
+    });
     $('toggle-grid').addEventListener('click', () => actions.toggleGrid());
     $('toggle-trails').addEventListener('click', () => actions.toggleTrails());
     $('toggle-contours').addEventListener('click', () => actions.toggleContours());
@@ -90,6 +98,7 @@ export class Controls {
       else if (b.dataset.action === 'reset-view') actions.resetView();
       else if (b.dataset.action === 'import-image') actions.importImage('potential');
       else if (b.dataset.action === 'import-image-particles') actions.importImage('particles');
+      else if (b.dataset.action === 'open-recording') actions.openRecording();
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {
@@ -244,6 +253,8 @@ export class Controls {
       el.hidden = el.dataset.for !== s.mode;
     }
     this.play.classList.toggle('playing', s.playing);
+    const seedInput = $<HTMLInputElement>('seed');
+    if (document.activeElement !== seedInput) seedInput.value = String(s.seed);
     this.playLabel.textContent = s.playing ? 'Pause' : 'Play';
     this.play.dataset.tip = s.playing ? 'Pause' : 'Play';
     this.play.setAttribute('aria-label', s.playing ? 'Pause' : 'Play');
@@ -269,6 +280,16 @@ export class Controls {
   }
 
   /** Reflects the recording state in the toolbar button. */
+  /** In playback mode the simulation clock and the recorder are off. */
+  setPlaybackLock(on: boolean): void {
+    for (const id of ['play', 'toggle-record']) {
+      const b = $<HTMLButtonElement>(id);
+      b.disabled = on;
+      if (on) b.dataset.tipSaved = b.dataset.tip ?? '';
+      b.dataset.tip = on ? 'Disabled during playback' : (b.dataset.tipSaved ?? b.dataset.tip ?? '');
+    }
+  }
+
   setRecording(on: boolean): void {
     const b = $('toggle-record');
     b.setAttribute('aria-pressed', String(on));

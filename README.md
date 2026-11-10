@@ -44,6 +44,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Image → particles | **Drop an image on the right half**, or Scene menu → *Image → particles…* (<kbd>Shift</kbd>+<kbd>I</kbd>) |
 | Live camera → Ψ | Camera button in the toolbar (<kbd>V</kbd>); click again to stop and keep the last frame |
 | Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
+| Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
+| Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
 
 The panel at the bottom left sets the diffusivity σ, the simulation speed, the numerical scheme and the brush size
@@ -100,6 +102,23 @@ estimate on the scene as a light hot-pink fill with bold pink iso-density lines 
 maximum, a hue that appears nowhere in the colour map of Ψ. It uses the same grid as the KL estimate and is
 updated 30 times per second while shown.
 
+**Reproducibility.** All randomness (Brownian noise, particle colours, spraying, image sampling,
+presets) comes from named xoshiro128\*\* streams derived from one seed, and the integrator runs on a
+fixed clock: every step is exactly Δt = 2 ms and leftover time is carried over to the next frame. A
+run is therefore a function of the seed and the user's actions only, not of the frame rate.
+
+**Playback.** Dropping a recording restores everything it contains and switches to playback mode:
+a player at the bottom plays the run at its recorded speed and scrubs through it, while the
+simulation clock and the recorder are disabled. Changing Ψ, particles or a physics setting (σ,
+speed, scheme, seed) leaves playback and continues from the shown frame; since recordings store the
+random state and clock remainder of every frame, continuing reproduces the original run exactly.
+Viewing controls (grid, trails, density, kernel variance, camera) do not leave playback.
+
+Saving and loading go through `src/session/`: every persistent piece of state is a
+`StateComponent` (scalar settings are schema-driven `SettingsGroup`s with validated `Field`s), and a
+`Session` captures, applies and fingerprints them in a fixed order. A new feature becomes
+recordable and replayable by registering one more component.
+
 **Recording runs.** The record button (<kbd>Shift</kbd>+<kbd>R</kbd>) starts and stops a recording; finished
 runs appear in the *Recordings* panel on the right and download as `.npz` files:
 
@@ -116,7 +135,9 @@ psi = run["psi"]                                 # (snapshots, ny, nx) on psi_gr
 kl_t, kl, floor = run["kl_t"], run["kl"], run["kl_floor"]
 ```
 
-A run contains particle positions with stable ids (frames at up to 20 Hz, whenever something
+A run (format 2) also stores per frame the seed, the dynamics random state (`rng_state`), the clock
+remainder and the next particle id, and the full settings in the metadata. It contains particle
+positions (float64) with stable ids (frames at up to 20 Hz, whenever something
 changed), the simulated and wall-clock time of every frame, σ, speed, kernel variance, scheme and
 play state per frame, snapshots of Ψ on the lattice over the KL box (up to 5 Hz, whenever Ψ
 changed), and the KL time series with its floor, h, particle count and box. Recording stops by

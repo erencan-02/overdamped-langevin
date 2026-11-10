@@ -4,13 +4,12 @@ import { sampleImagePoints } from '../sim/imageParticles';
 import { IMAGE_BLUR_WORLD, imageToPotential } from '../sim/imagePotential';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import type { RandomStreams } from '../sim/random';
+import type { BusyOverlay } from '../ui/busyOverlay';
+import type { DropHandler } from '../ui/dropzone';
 import type { Camera } from '../view/camera';
 import { type DecodedImage, decodeSource, isImageFile } from './decode';
 import type { WorkerRequest } from './decode.worker';
 import { writePotential } from './writePotential';
-
-/** The loading overlay stays at least this long so it never just flashes. */
-const MIN_BUSY_MS = 450;
 
 /** What a dropped image turns into. */
 export type ImportTarget = 'potential' | 'particles';
@@ -37,15 +36,11 @@ type WorkerReply =
   | { id: number; ok: false; error: string };
 
 /**
- * Turns the window into two drop zones for images: the left half converts a dropped image into
- * Ψ, the right half into particles whose density follows the image. While an image is being
- * processed, a dimmed overlay with a spinner blocks all input.
+ * Converts images into Ψ or into particles. Dropping is handled by ImageDropHandler (below), which
+ * shows two zones: the left half of the window for Ψ, the right half for particles. While an image
+ * is being processed, the shared busy overlay blocks all input.
  */
 export class ImageImporter {
-  /** True while an image is being decoded and converted. */
-  busy = false;
-
-  private dragDepth = 0;
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, (r: WorkerReply) => void>();
@@ -57,16 +52,9 @@ export class ImageImporter {
     inverted: boolean;
     target: ImportTarget;
   } | null = null;
-  /** Drop zone under the cursor while dragging. */
-  private dragTarget: ImportTarget = 'potential';
   /** Target of the file picker that is currently open. */
   private pickerTarget: ImportTarget = 'potential';
 
-  private readonly dropOverlay = el('drop-overlay');
-  private readonly dropZones = Array.from(this.dropOverlay.querySelectorAll<HTMLElement>('.drop-zone'));
-  private readonly loadingOverlay = el('loading-overlay');
-  private readonly loadingTitle = el('loading-title');
-  private readonly loadingName = el('loading-name');
   private readonly fileInput = el('image-input') as HTMLInputElement;
 
   constructor(
@@ -74,26 +62,19 @@ export class ImageImporter {
     private readonly particles: ParticleSystem,
     private readonly camera: Camera,
     private readonly random: RandomStreams,
+    private readonly busy: BusyOverlay,
     private readonly hooks: ImporterHooks,
   ) {
-    window.addEventListener('dragenter', this.onDragEnter);
-    window.addEventListener('dragover', this.onDragOver);
-    window.addEventListener('dragleave', this.onDragLeave);
-    window.addEventListener('drop', this.onDrop);
     this.fileInput.addEventListener('change', () => {
       const file = this.fileInput.files?.[0];
       this.fileInput.value = '';
       if (file) void this.importFile(file, this.pickerTarget);
     });
-    // The loading overlay swallows every pointer, wheel and touch interaction.
-    for (const type of ['pointerdown', 'wheel', 'contextmenu', 'touchstart'] as const) {
-      this.loadingOverlay.addEventListener(type, (e) => e.preventDefault(), { passive: false });
-    }
   }
 
   /** Opens the system file picker; the chosen image goes to `target`. */
   openPicker(target: ImportTarget = 'potential'): void {
-    if (this.busy) return;
+    if (this.busy.active) return;
     this.pickerTarget = target;
     this.fileInput.click();
   }
@@ -101,7 +82,7 @@ export class ImageImporter {
   /** Re-applies the last imported image with dark and light swapped. */
   invertLast(): void {
     const last = this.last;
-    if (!last || this.busy) return;
+    if (!last || this.busy.active) return;
     last.inverted = !last.inverted;
     const count = this.apply(last.image, last.cx, last.cy, last.inverted, last.target);
     if (count > 0) {
@@ -109,72 +90,15 @@ export class ImageImporter {
     }
   }
 
-  // ---------------------------------------------------------------- drag & drop
-
-  private hasFiles(e: DragEvent): boolean {
-    return Array.from(e.dataTransfer?.types ?? []).includes('Files');
-  }
-
-  /** Left half of the window: Ψ; right half: particles. */
-  private targetAt(clientX: number): ImportTarget {
-    return clientX < window.innerWidth / 2 ? 'potential' : 'particles';
-  }
-
-  private highlight(target: ImportTarget): void {
-    this.dragTarget = target;
-    for (const z of this.dropZones) z.classList.toggle('active', z.dataset.target === target);
-  }
-
-  private onDragEnter = (e: DragEvent): void => {
-    if (!this.hasFiles(e)) return;
-    e.preventDefault();
-    this.dragDepth++;
-    if (!this.busy) {
-      this.highlight(this.targetAt(e.clientX));
-      this.dropOverlay.hidden = false;
-    }
-  };
-
-  private onDragOver = (e: DragEvent): void => {
-    if (!this.hasFiles(e)) return;
-    // Without preventDefault the browser would open the image in the tab.
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = this.busy ? 'none' : 'copy';
-    if (!this.busy) {
-      const target = this.targetAt(e.clientX);
-      if (target !== this.dragTarget) this.highlight(target);
-    }
-  };
-
-  private onDragLeave = (e: DragEvent): void => {
-    if (!this.hasFiles(e)) return;
-    this.dragDepth = Math.max(0, this.dragDepth - 1);
-    if (this.dragDepth === 0) this.dropOverlay.hidden = true;
-  };
-
-  private onDrop = (e: DragEvent): void => {
-    if (!this.hasFiles(e)) return;
-    e.preventDefault();
-    this.dragDepth = 0;
-    this.dropOverlay.hidden = true;
-    if (this.busy) return;
-    const files = Array.from(e.dataTransfer?.files ?? []);
-    const file = files.find(isImageFile);
-    if (file) void this.importFile(file, this.targetAt(e.clientX));
-    else if (files.length) this.hooks.onError('That file is not an image. Try a PNG, JPEG, WebP, GIF or SVG.');
-  };
-
   // ---------------------------------------------------------------- import
 
   async importFile(file: File, target: ImportTarget = 'potential'): Promise<void> {
-    if (this.busy) return;
+    if (this.busy.active) return;
     if (!isImageFile(file)) {
       this.hooks.onError('That file is not an image. Try a PNG, JPEG, WebP, GIF or SVG.');
       return;
     }
-    this.setBusy(true, file.name, target);
     this.hooks.onStart(target);
-    const started = performance.now();
     // The image goes where the user is looking.
     const cx = this.camera.x;
     const cy = this.camera.y;
@@ -183,36 +107,22 @@ export class ImageImporter {
 
     let error: string | null = null;
     let count = 0;
-    try {
-      const image = await this.decode(file, req);
-      count = this.apply(image, cx, cy, false, target);
-      if (count > 0) {
-        this.last = { image, cx, cy, name: file.name, inverted: false, target };
-      } else {
-        error = NO_CONTRAST[target];
+    await this.busy.run(LOADING_TITLE[target], file.name, async () => {
+      try {
+        const image = await this.decode(file, req);
+        count = this.apply(image, cx, cy, false, target);
+        if (count > 0) {
+          this.last = { image, cx, cy, name: file.name, inverted: false, target };
+        } else {
+          error = NO_CONTRAST[target];
+        }
+      } catch (err) {
+        console.error(err);
+        error = 'This image could not be read. Try a PNG, JPEG, WebP, GIF or SVG.';
       }
-    } catch (err) {
-      console.error(err);
-      error = 'This image could not be read. Try a PNG, JPEG, WebP, GIF or SVG.';
-    }
-
-    const wait = MIN_BUSY_MS - (performance.now() - started);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    this.setBusy(false);
+    });
     if (error) this.hooks.onError(error);
     else this.hooks.onImported({ name: file.name, inverted: false, target, count });
-  }
-
-  private setBusy(busy: boolean, name = '', target: ImportTarget = 'potential'): void {
-    this.busy = busy;
-    this.loadingTitle.textContent = LOADING_TITLE[target];
-    this.loadingName.textContent = name;
-    this.loadingOverlay.hidden = !busy;
-    document.body.classList.toggle('is-busy', busy);
-    if (busy) {
-      this.dropOverlay.hidden = true;
-      (document.activeElement as HTMLElement | null)?.blur?.();
-    }
   }
 
   /** Decodes in a Web Worker when possible, otherwise (or if that fails) on the main thread. */
@@ -328,6 +238,39 @@ export class ImageImporter {
       ps.add(x0 + pts[p] * h, yTop - pts[p + 1] * h, colors.int(PALETTE.length));
     }
     return ps.count;
+  }
+}
+
+/**
+ * Drop handler for images: two zones, the left half of the window for Ψ, the right half for
+ * particles.
+ */
+export class ImageDropHandler implements DropHandler {
+  readonly id = 'image';
+
+  constructor(private readonly importer: ImageImporter) {}
+
+  acceptsDrag(items: readonly DataTransferItem[]): boolean {
+    return items.length > 0 && items.every((i) => i.type.startsWith('image/'));
+  }
+
+  acceptsFile(file: File): boolean {
+    return isImageFile(file);
+  }
+
+  private targetAt(clientX: number): ImportTarget {
+    return clientX < window.innerWidth / 2 ? 'potential' : 'particles';
+  }
+
+  hover(clientX: number, _clientY: number, layout: HTMLElement): void {
+    const target = this.targetAt(clientX);
+    for (const z of layout.querySelectorAll<HTMLElement>('.drop-zone')) {
+      z.classList.toggle('active', z.dataset.target === target);
+    }
+  }
+
+  drop(file: File, clientX: number): void {
+    void this.importer.importFile(file, this.targetAt(clientX));
   }
 }
 

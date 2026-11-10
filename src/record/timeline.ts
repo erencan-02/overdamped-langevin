@@ -32,6 +32,8 @@ export class RecordingTimeline {
   private readonly nextId: NumericArray | null;
   private readonly psi: { values: NumericArray; nx: number; ny: number; x0: number; y0: number; cell: number } | null;
   private readonly psiWall: Float64Array;
+  /** First frame of each Ψ snapshot (format 2), or null to match by wall-clock time (format 1). */
+  private readonly psiFrame: NumericArray | null;
   private readonly metadata: Record<string, unknown>;
   private readonly klBox: Box | null;
 
@@ -76,6 +78,8 @@ export class RecordingTimeline {
       throw new RecordingError('The particle arrays of the recording are inconsistent.');
     }
     this.wall = f64(num('wall_time')) ?? Float64Array.from(this.t);
+    // Pacing assumes non-decreasing times; guard against odd files.
+    for (let k = 1; k < this.frames; k++) if (!(this.wall[k] >= this.wall[k - 1])) this.wall[k] = this.wall[k - 1];
 
     const idList = num('ids');
     const idColor = num('id_color');
@@ -101,6 +105,7 @@ export class RecordingTimeline {
       this.psi = null;
     }
     this.psiWall = f64(num('psi_wall_time')) ?? f64(num('psi_t')) ?? new Float64Array(this.psi ? 1 : 0);
+    this.psiFrame = num('psi_frame');
 
     const box = num('kl_box');
     this.klBox = box && box.length >= 4 ? { x0: box[0], y0: box[1], x1: box[2], y1: box[3] } : null;
@@ -135,8 +140,12 @@ export class RecordingTimeline {
   /** Index of the Ψ snapshot in effect at frame k (−1 if the recording has none). */
   potentialIndexAt(k: number): number {
     if (!this.psi) return -1;
-    const w = this.wall[k] + 1e-9;
     let s = 0;
+    if (this.psiFrame && this.psiFrame.length) {
+      for (let i = 1; i < this.psiFrame.length; i++) if (this.psiFrame[i] <= k) s = i;
+      return s;
+    }
+    const w = this.wall[k] + 1e-9;
     for (let i = 1; i < this.psiWall.length; i++) if (this.psiWall[i] <= w) s = i;
     return s;
   }

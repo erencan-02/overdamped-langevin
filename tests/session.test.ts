@@ -84,7 +84,10 @@ describe('Session', () => {
     ps.add(0, 0, 0);
     const f2 = session.fingerprint();
     expect(f2).not.toBe(f1);
-    state.trails = false;
-    expect(session.fingerprint()).not.toBe(f2);
+    state.sigma = 1.7; // physics settings alter the simulation
+    const f3 = session.fingerprint();
+    expect(f3).not.toBe(f2);
+    state.trails = false; // display settings do not
+    expect(session.fingerprint()).toBe(f3);
   });
 });
