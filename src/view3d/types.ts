@@ -17,6 +17,18 @@ export interface CameraPose {
   azimuth: number;
 }
 
+/** The world point under a screen point, and how many world units one CSS pixel spans there. */
+export interface WorldPick {
+  x: number;
+  y: number;
+  perPx: number;
+}
+
+/** What the 3D view shows under the mouse: the brush rings, or the next particle. */
+export type Cursor3D =
+  | { kind: 'brush'; x: number; y: number; radius: number; sign: number; perPx: number }
+  | { kind: 'particle'; x: number; y: number; color: string };
+
 /** What the transition controller needs from the 3D scene (implemented by Scene3D). */
 export interface Scene3DView {
   readonly canvas: HTMLCanvasElement;
@@ -28,6 +40,9 @@ export interface Scene3DView {
   setControlsEnabled(on: boolean): void;
   setGrid(on: boolean): void;
   setContours(on: boolean): void;
+  /** The point of the surface under a stage point (CSS px), or null if the ray misses it. */
+  pick(sx: number, sy: number): WorldPick | null;
+  setCursor(c: Cursor3D | null): void;
   resize(w: number, h: number, dpr: number): void;
   render(nowMs: number): void;
 }

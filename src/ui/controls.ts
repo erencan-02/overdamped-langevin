@@ -68,9 +68,7 @@ export class Controls {
     actions: ControlActions,
   ) {
     for (const b of this.segButtons) {
-      b.addEventListener('click', () => {
-        if (this.state.view === '2d') actions.setMode(b.dataset.mode as Mode);
-      });
+      b.addEventListener('click', () => actions.setMode(b.dataset.mode as Mode));
     }
     for (const b of this.viewButtons) {
       b.addEventListener('click', () => actions.setView(b.dataset.view as ViewKind));
@@ -264,9 +262,6 @@ export class Controls {
     this.stage.dataset.mode = s.mode;
     for (const b of this.segButtons) b.setAttribute('aria-checked', String(b.dataset.mode === s.mode));
     this.placeThumbs();
-    const in3D = s.view === '3d';
-    this.modeSeg.classList.toggle('disabled', in3D);
-    for (const b of this.segButtons) b.setAttribute('aria-disabled', String(in3D));
     for (const b of this.viewButtons) b.setAttribute('aria-checked', String(b.dataset.view === s.view));
     for (const el of document.querySelectorAll<HTMLElement>('.mode-only')) {
       el.hidden = el.dataset.for !== s.mode;
@@ -341,10 +336,15 @@ export class Controls {
     const particles =
       '<span><b>Click</b> drop particle</span><span><b>Shift-drag</b> spray</span>' +
       '<span><b>Right-drag</b> grid</span><span><b>Right-click</b> remove</span>';
-    const view3d =
-      '<span><b>Drag</b> orbit</span><span><b>Right-drag</b> pan</span>' +
-      '<span><b>Scroll</b> zoom</span><span><b>2</b> back to 2D to edit</span>';
-    this.hint.innerHTML = this.state.view === '3d' ? view3d : this.state.mode === 'brush' ? brush : particles;
+    const orbit =
+      '<span><b>Middle-drag</b> or <b>Alt-drag</b> orbit</span><span><b>Shift + middle</b> pan</span>' +
+      '<span><b>Scroll</b> zoom</span>';
+    const brush3d = '<span><b>Left-drag</b> raise Ψ</span><span><b>Right-drag</b> lower Ψ</span>' + orbit;
+    const particles3d =
+      '<span><b>Click</b> drop</span><span><b>Shift-drag</b> spray</span><span><b>Right-click</b> remove</span>' + orbit;
+    const in3D = this.state.view === '3d';
+    this.hint.innerHTML =
+      this.state.mode === 'brush' ? (in3D ? brush3d : brush) : in3D ? particles3d : particles;
   }
 
   /** Shows a short message, optionally with one action button (then it stays longer). */

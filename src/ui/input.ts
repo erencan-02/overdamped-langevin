@@ -6,6 +6,7 @@ import { forEachGridPoint, spawnGrid } from '../sim/spawnGrid';
 import type { RandomStreams } from '../sim/random';
 import type { AppState } from '../state';
 import type { Camera } from '../view/camera';
+import type { WorldPick } from '../view3d/types';
 
 /** Particles per second while spraying (Shift + drag in particle mode). */
 const SPRAY_RATE = 80;
@@ -34,6 +35,10 @@ export interface GridSelection {
  *  - particle mode: left click drops a particle, Shift + drag sprays, right click removes,
  *    right-drag spans a rectangle that is filled with an equidistant grid of particles.
  * Every stroke, spray, click and grid is one step of the undo history.
+ *
+ * In the 3D view the same tools work on the surface: `picker` then maps the mouse to the point of
+ * the surface under it. Orbiting is the 3D camera's (middle button, Alt + left, touch); the
+ * right-drag grid and the 2D pan and zoom are not available there.
  */
 export class InputController {
   /** Cursor in CSS pixels relative to the stage. */
@@ -41,8 +46,13 @@ export class InputController {
   brushSign = 0;
   panning = false;
   nextColor = 0;
-  /** False while the read-only 3D view is shown: presses and the wheel are ignored. */
+  /** False during 2D ↔ 3D transitions: presses and the wheel are ignored. */
   enabled = true;
+  /**
+   * Maps a stage point (CSS px) to the world point under it in the 3D view, or null in 2D (the
+   * 2D camera is used then).
+   */
+  picker: ((sx: number, sy: number) => WorldPick | null) | null = null;
 
   private spraying = false;
   private sprayCarry = 0;
@@ -54,8 +64,8 @@ export class InputController {
   private lastPan = { x: 0, y: 0 };
   /** A brush stroke or spray is being recorded as one undo step. */
   private stepOpen = false;
-  /** Right-drag rectangle: anchor in world units, press position in CSS px. */
-  private grid: { ax: number; ay: number; sx: number; sy: number; dragged: boolean } | null = null;
+  /** Right-press: anchor in world units, press position in CSS px, world units per px there. */
+  private grid: { ax: number; ay: number; sx: number; sy: number; dragged: boolean; perPx: number } | null = null;
 
   /** Called after any user interaction that changes the scene. */
   onInteract: () => void = () => {};
@@ -92,10 +102,10 @@ export class InputController {
     return this.brushSign !== 0 || this.panning || this.spraying || this.grid !== null;
   }
 
-  /** The rectangle currently being dragged (for the preview), or null. */
+  /** The rectangle currently being dragged (for the preview), or null. 2D only. */
   get selection(): GridSelection | null {
     const g = this.grid;
-    if (!g || !g.dragged) return null;
+    if (!g || !g.dragged || this.picker) return null;
     return {
       ax: g.ax,
       ay: g.ay,
@@ -104,6 +114,12 @@ export class InputController {
       spacing: this.state.particleSpacing,
       room: MAX_PARTICLES - this.ps.count,
     };
+  }
+
+  /** The world point under stage point (sx, sy): the 3D surface's, or the 2D camera's. */
+  pick(sx: number, sy: number): WorldPick | null {
+    if (this.picker) return this.picker(sx, sy);
+    return { x: this.cam.toWorldX(sx), y: this.cam.toWorldY(sy), perPx: 1 / this.cam.scale };
   }
 
   private local(e: PointerEvent | WheelEvent): { x: number; y: number } {
@@ -145,6 +161,8 @@ export class InputController {
     this.cursor.visible = true;
 
     const wantsPan = e.button === 1 || (e.button === 0 && e.altKey);
+    // In 3D these orbit the camera (OrbitControls), and so does a finger.
+    if (this.picker && (wantsPan || e.pointerType === 'touch')) return;
     if (wantsPan) {
       if (this.panPointer >= 0) return;
       e.preventDefault();
@@ -157,8 +175,10 @@ export class InputController {
     if (e.button !== 0 && e.button !== 2) return;
     if (this.toolPointer >= 0) return;
 
-    const wx = this.cam.toWorldX(p.x);
-    const wy = this.cam.toWorldY(p.y);
+    const hit = this.pick(p.x, p.y);
+    if (!hit) return; // in 3D: not on the surface
+    const wx = hit.x;
+    const wy = hit.y;
 
     if (this.state.mode === 'brush') {
       this.toolPointer = e.pointerId;
@@ -180,7 +200,7 @@ export class InputController {
     } else {
       // Right button: a click removes the nearest particle, a drag spans a spawn rectangle.
       this.toolPointer = e.pointerId;
-      this.grid = { ax: wx, ay: wy, sx: p.x, sy: p.y, dragged: false };
+      this.grid = { ax: wx, ay: wy, sx: p.x, sy: p.y, dragged: false, perPx: hit.perPx };
       this.capture(e.pointerId);
     }
   };
@@ -230,7 +250,7 @@ export class InputController {
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
-    if (!this.enabled) return;
+    if (!this.enabled || this.picker) return; // in 3D the wheel zooms the 3D camera
     const p = this.local(e);
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
     const dy = Math.max(-300, Math.min(300, e.deltaY * unit));
@@ -269,8 +289,9 @@ export class InputController {
     const g = this.grid;
     this.grid = null;
     if (!g || !released) return; // cancelled (e.g. pointer capture lost)
+    if (this.picker && g.dragged) return; // no grid rectangles in 3D
     if (!sel) {
-      const i = this.ps.nearest(g.ax, g.ay, PICK_RADIUS / this.cam.scale);
+      const i = this.ps.nearest(g.ax, g.ay, PICK_RADIUS * g.perPx);
       if (i >= 0) {
         this.history.run('Remove particle', () => this.ps.removeAt(i));
         this.onInteract();
@@ -297,8 +318,12 @@ export class InputController {
 
   /** Applies continuous tools (brush, spray). Called once per frame with the real-time step. */
   update(dt: number): void {
-    const cx = this.cam.toWorldX(this.cursor.x);
-    const cy = this.cam.toWorldY(this.cursor.y);
+    const active = (this.brushSign !== 0 && this.lastBrush !== null) || this.spraying;
+    // In 3D the cursor can be off the surface: then nothing is painted or sprayed this frame.
+    const at = active ? this.pick(this.cursor.x, this.cursor.y) : null;
+    if (!at) return;
+    const cx = at.x;
+    const cy = at.y;
 
     if (this.brushSign !== 0 && this.lastBrush) {
       // Deposit strength·dt per frame, distributed along the path travelled since the last
@@ -320,7 +345,7 @@ export class InputController {
 
     if (this.spraying) {
       this.sprayCarry += SPRAY_RATE * dt;
-      const jitter = SPRAY_JITTER / this.cam.scale;
+      const jitter = SPRAY_JITTER * at.perPx;
       while (this.sprayCarry >= 1 && !this.ps.full) {
         this.sprayCarry -= 1;
         const spawn = this.random.get('spawn');

@@ -72,23 +72,24 @@ function main(): void {
   const overlay = new Overlay(overlayCanvas);
   const input = new InputController(stage, camera, field, particles, state, random, history);
 
-  // 2D (editable) ↔ read-only 3D view (three.js, loaded on first use).
+  // 2D ↔ 3D view (three.js, loaded on first use). The tools work in both.
   const viewSwitch = new ViewSwitch(stage, field, particles, {
     view2D: () => camera.bounds(),
     onModeChange: (mode) => {
       state.view = mode;
-      if (mode === '3d') {
-        input.cancel(); // ends a stroke or spray in progress
-        input.enabled = false;
-      }
+      input.cancel(); // ends a stroke or spray in progress: it belonged to the other view
+      input.enabled = false; // until the transition has finished
       controls.sync();
     },
     onError: (message) => controls.showToast(message),
   });
-  /** In 3D the scene is read-only: edits are refused with a hint. Returns true if refused. */
-  const readOnly = (): boolean => {
+  /**
+   * Images and recordings move the 2D view to where they are placed, outside what the 3D view
+   * shows, so they are opened in 2D. Returns true (with a hint) if that was refused.
+   */
+  const needs2D = (): boolean => {
     if (state.view !== '3d') return false;
-    controls.showToast('The 3D view is read-only. Press 2 to edit in 2D.');
+    controls.showToast('Images and recordings open in the 2D view. Press 2 first.');
     return true;
   };
 
@@ -151,23 +152,22 @@ function main(): void {
       controls.sync();
     },
     clearParticles() {
-      if (readOnly() || particles.count === 0) return;
+      if (particles.count === 0) return;
       history.run('Clear particles', () => particles.clear());
       controls.showToast('Particles cleared', { label: 'Undo', run: () => actions.undo() });
     },
     clearField() {
-      if (readOnly()) return;
       liveCamera.stop();
       history.run('Clear Ψ', () => field.clear());
       controls.showToast('Potential cleared', { label: 'Undo', run: () => actions.undo() });
     },
     undo() {
-      if (readOnly() || busy.active || input.busy || history.recording) return;
+      if (busy.active || input.busy || history.recording) return;
       const label = history.undo();
       controls.showToast(label ? `Undone: ${label}` : 'Nothing to undo');
     },
     redo() {
-      if (readOnly() || busy.active || input.busy || history.recording) return;
+      if (busy.active || input.busy || history.recording) return;
       const label = history.redo();
       controls.showToast(label ? `Redone: ${label}` : 'Nothing to redo');
     },
@@ -175,7 +175,7 @@ function main(): void {
       camera.reset();
     },
     importImage(target) {
-      if (readOnly()) return;
+      if (needs2D()) return;
       importer.openPicker(target);
     },
     setSeed(seed: number) {
@@ -184,11 +184,10 @@ function main(): void {
       controls.showToast(`Seed ${seed}: all random streams restarted`);
     },
     openRecording() {
-      if (readOnly()) return;
+      if (needs2D()) return;
       if (!busy.active) recordingInput.click();
     },
     preset(name: string) {
-      if (readOnly()) return;
       liveCamera.stop();
       history.run('Preset', () => applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets')));
     },
@@ -369,7 +368,7 @@ function main(): void {
     [new ImageDropHandler(importer), new RecordingDropHandler((file) => void openRecording(file))],
     () => busy.active || state.view === '3d',
     (message) => controls.showToast(message),
-    () => (state.view === '3d' ? 'The 3D view is read-only. Press 2 to edit in 2D, then drop the file again.' : null),
+    () => (state.view === '3d' ? 'Images and recordings open in the 2D view. Press 2, then drop the file again.' : null),
   );
 
   // ---------------------------------------------------------------- keyboard
@@ -562,7 +561,9 @@ function main(): void {
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
 
-    input.enabled = viewSwitch.interactive2D; // the 3D view (and its transitions) is read-only
+    // The tools work in 2D and in 3D (on the surface), but not during the transition between them.
+    input.enabled = viewSwitch.interactive2D || viewSwitch.interactive3D;
+    input.picker = viewSwitch.interactive3D ? (sx, sy) => viewSwitch.pick(sx, sy) : null;
     input.update(dt);
     // Playback first: it notices if the user just altered the simulation and leaves.
     playback.update(now);
@@ -628,10 +629,19 @@ function main(): void {
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
-    if (input.cursor.visible && viewSwitch.interactive2D) {
-      const wx = camera.toWorldX(input.cursor.x);
-      const wy = camera.toWorldY(input.cursor.y);
-      controls.updateReadout(wx, wy, field.sample(wx, wy), particles.time, particles.count, MAX_PARTICLES);
+    // The point under the mouse: in 2D from the camera, in 3D on the surface (or none).
+    const under = input.cursor.visible && input.enabled ? input.pick(input.cursor.x, input.cursor.y) : null;
+    if (viewSwitch.interactive3D) {
+      viewSwitch.setCursor(
+        !under
+          ? null
+          : state.mode === 'brush'
+            ? { kind: 'brush', x: under.x, y: under.y, radius: state.brushRadius, sign: input.brushSign, perPx: under.perPx }
+            : { kind: 'particle', x: under.x, y: under.y, color: PALETTE[input.nextColor] },
+      );
+    }
+    if (under) {
+      controls.updateReadout(under.x, under.y, field.sample(under.x, under.y), particles.time, particles.count, MAX_PARTICLES);
     } else {
       controls.updateReadout(null, null, null, particles.time, particles.count, MAX_PARTICLES);
     }
@@ -650,6 +660,7 @@ function main(): void {
       monitor,
       observables,
       viewSwitch,
+      input,
       recorder,
       history,
       session,
