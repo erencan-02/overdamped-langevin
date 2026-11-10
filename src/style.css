@@ -410,6 +410,13 @@ kbd {
   flex-direction: column;
   gap: 12px;
 }
+/* The settings are the body of a collapsible card like the analysis windows. */
+.settings .panel {
+  padding: 4px 10px 2px;
+}
+.panel[hidden] {
+  display: none;
+}
 .field {
   display: flex;
   flex-direction: column;
@@ -1465,6 +1472,10 @@ body.in-playback .hint {
 }
 .modal .katex {
   font-size: 1.05em;
+}
+/* Inline formulas in the side panels (rendered by KaTeX at start, MathML until then). */
+.left-col .tex .katex {
+  font-size: 1.12em;
 }
 .help-section {
   margin: 18px 0 12px !important;

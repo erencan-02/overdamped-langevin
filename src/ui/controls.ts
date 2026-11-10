@@ -23,6 +23,8 @@ export interface ControlActions {
   toggleDensity(): void;
   clearParticles(): void;
   clearField(): void;
+  undo(): void;
+  redo(): void;
   resetView(): void;
   importImage(target: 'potential' | 'particles'): void;
   preset(name: string): void;
@@ -95,6 +97,8 @@ export class Controls {
       if (b.dataset.preset) actions.preset(b.dataset.preset);
       else if (b.dataset.action === 'clear-particles') actions.clearParticles();
       else if (b.dataset.action === 'clear-field') actions.clearField();
+      else if (b.dataset.action === 'undo') actions.undo();
+      else if (b.dataset.action === 'redo') actions.redo();
       else if (b.dataset.action === 'reset-view') actions.resetView();
       else if (b.dataset.action === 'import-image') actions.importImage('potential');
       else if (b.dataset.action === 'import-image-particles') actions.importImage('particles');

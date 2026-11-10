@@ -81,7 +81,7 @@ describe('Recorder', () => {
     expect(m.header).toContain("'shape': ()");
     const codes = new Uint32Array(m.data.buffer.slice(m.data.byteOffset, m.data.byteOffset + m.data.byteLength));
     const meta = JSON.parse(String.fromCodePoint(...codes));
-    expect(meta.format).toBe('potential-sde-run');
+    expect(meta.format).toBe('langevin-dynamics-run');
 
     // Particle ids: particle 1 was removed, id 4 moved into slot 1, id 5 was added.
     const off = parseNpy(files['frame_offsets.npy']);
@@ -91,5 +91,50 @@ describe('Recorder', () => {
     const last = run.frames - 1;
     expect(Array.from(ids.slice(offsets[last], offsets[last + 1])).sort()).toEqual([0, 2, 3, 4, 5]);
 
+  });
+});
+
+describe('observable time series in recordings', () => {
+  it('stores E[f] with its interval, the exact value and the LaTeX of f', async () => {
+    const { readNpz } = await import('../src/record/npzRead');
+    const field = new PotentialField({ cellSize: 0.04, cap: 5 });
+    const ps = new ParticleSystem(new Rng(1));
+    ps.add(0, 0, 0);
+    const params = { sigma: 0.6, speed: 1, kernelVariance: 0.09, scheme: 'heun' as const, seed: 0, playing: true };
+    const rec = new Recorder({ field, particles: ps, params: () => params });
+    rec.start(0, { x0: -1, y0: -1, x1: 1, y1: 1 });
+    const base = { inside: 10, total: 12, undefinedAt: 0 };
+    rec.addObservable(0.5, { ...base, mean: 0.3, ci: 0.05, exact: 0.25, exactStale: false }, 'x^2');
+    rec.addObservable(1.0, { ...base, mean: 0.28, ci: 0.04, exact: 0.2, exactStale: true }, 'x^2');
+    rec.addObservable(1.5, { ...base, mean: 0.1, ci: 0.02, exact: 0, exactStale: false }, '\sin x');
+    const run = rec.stop(100)!;
+    const arrays = await readNpz(await run.toNpz());
+    const col = (name: string) => Array.from(arrays.get(name)!.data!);
+    expect(col('obs_t')).toEqual([0.5, 1, 1.5]);
+    expect(col('obs_mean')).toEqual([0.3, 0.28, 0.1]);
+    expect(col('obs_ci')).toEqual([0.05, 0.04, 0.02]);
+    expect(col('obs_exact')[0]).toBe(0.25);
+    expect(col('obs_exact')[1]).toBeNaN(); // stale: belonged to an earlier Ψ
+    expect(col('obs_inside')).toEqual([10, 10, 10]);
+    expect(col('obs_expr')).toEqual([0, 0, 1]);
+    const meta = JSON.parse(arrays.get('metadata')!.strings![0]);
+    expect(meta.observable_expressions).toEqual(['x^2', '\sin x']);
+    expect(meta.arrays.obs_mean).toBeTruthy();
+  });
+
+  it('still reads recordings saved under the old app name', async () => {
+    const { npzArchive, npyString } = await import('../src/record/npz');
+    const { readNpz } = await import('../src/record/npzRead');
+    const { RecordingTimeline } = await import('../src/record/timeline');
+    const f8 = (v: number[]) => ({ dtype: '<f8' as const, shape: [v.length], data: Float64Array.from(v) });
+    const file = await npzArchive({
+      t: f8([0]),
+      frame_offsets: { dtype: '<i4', shape: [2], data: Int32Array.from([0, 1]) },
+      particle_id: { dtype: '<u4', shape: [1], data: Uint32Array.from([0]) },
+      x: f8([1]),
+      y: f8([2]),
+      metadata: npyString(JSON.stringify({ format: 'potential-sde-run', format_version: 2 })),
+    });
+    expect(new RecordingTimeline(await readNpz(file)).frames).toBe(1);
   });
 });

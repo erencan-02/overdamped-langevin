@@ -1,5 +1,5 @@
 {
-  "name": "potential-sde",
+  "name": "langevin-dynamics",
   "private": true,
   "version": "1.0.0",
   "description": "Interactive real-time simulator of the overdamped Langevin SDE dX = -grad Psi(X) dt + sigma dW on a paintable 2D potential landscape.",

@@ -132,7 +132,7 @@ function fileName(run: Run): string {
   const d = run.startedAt;
   const pad = (v: number) => String(v).padStart(2, '0');
   const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  return `potential-sde-${run.name.toLowerCase().replace(/\s+/g, '-')}-${stamp}.npz`;
+  return `langevin-dynamics-${run.name.toLowerCase().replace(/\s+/g, '-')}-${stamp}.npz`;
 }
 
 function button(label: string, icon: string): HTMLButtonElement {

@@ -1,5 +1,6 @@
 import { PALETTE } from '../config';
 import type { PotentialField } from '../sim/field';
+import type { UndoHistory } from '../sim/history';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import { forEachGridPoint, spawnGrid } from '../sim/spawnGrid';
 import type { RandomStreams } from '../sim/random';
@@ -32,6 +33,7 @@ export interface GridSelection {
  *  - brush mode: left raises Ψ, right lowers Ψ (Gaussian brush, applied continuously),
  *  - particle mode: left click drops a particle, Shift + drag sprays, right click removes,
  *    right-drag spans a rectangle that is filled with an equidistant grid of particles.
+ * Every stroke, spray, click and grid is one step of the undo history.
  */
 export class InputController {
   /** Cursor in CSS pixels relative to the stage. */
@@ -48,6 +50,8 @@ export class InputController {
   private panPointer = -1;
   private toolPointer = -1;
   private lastPan = { x: 0, y: 0 };
+  /** A brush stroke or spray is being recorded as one undo step. */
+  private stepOpen = false;
   /** Right-drag rectangle: anchor in world units, press position in CSS px. */
   private grid: { ax: number; ay: number; sx: number; sy: number; dragged: boolean } | null = null;
 
@@ -63,6 +67,7 @@ export class InputController {
     private readonly ps: ParticleSystem,
     private readonly state: AppState,
     private readonly random: RandomStreams,
+    private readonly history: UndoHistory,
   ) {
     this.pickNextColor();
     el.addEventListener('pointerdown', this.onDown);
@@ -157,15 +162,17 @@ export class InputController {
       this.brushSign = e.button === 0 ? 1 : -1;
       this.lastBrush = { x: wx, y: wy };
       this.brushApplied = false;
+      this.beginStep('Brush stroke');
       this.capture(e.pointerId);
     } else if (e.button === 0) {
       if (e.shiftKey) {
         this.toolPointer = e.pointerId;
         this.spraying = true;
         this.sprayCarry = 1; // the first particle appears immediately
+        this.beginStep('Spray particles');
         this.capture(e.pointerId);
       } else {
-        this.dropParticle(wx, wy);
+        this.history.run('Add particle', () => this.dropParticle(wx, wy));
       }
     } else {
       // Right button: a click removes the nearest particle, a drag spans a spawn rectangle.
@@ -213,6 +220,7 @@ export class InputController {
       this.brushSign = 0;
       this.spraying = false;
       this.lastBrush = null;
+      this.endStep();
     }
     if (this.el.hasPointerCapture(e.pointerId)) this.el.releasePointerCapture(e.pointerId);
   };
@@ -236,6 +244,19 @@ export class InputController {
     this.panning = false;
     this.spraying = false;
     this.lastBrush = null;
+    this.endStep(); // what was painted or sprayed so far stays, as one step
+  }
+
+  private beginStep(label: string): void {
+    if (this.stepOpen) return;
+    this.stepOpen = true;
+    this.history.begin(label);
+  }
+
+  private endStep(): void {
+    if (!this.stepOpen) return;
+    this.stepOpen = false;
+    this.history.end();
   }
 
   /** Completes a right-press: spawn the grid (drag) or remove a particle (click). */
@@ -247,16 +268,18 @@ export class InputController {
     if (!sel) {
       const i = this.ps.nearest(g.ax, g.ay, PICK_RADIUS / this.cam.scale);
       if (i >= 0) {
-        this.ps.removeAt(i);
+        this.history.run('Remove particle', () => this.ps.removeAt(i));
         this.onInteract();
       }
       return;
     }
     const grid = spawnGrid(sel.ax, sel.ay, sel.bx, sel.by, sel.spacing);
-    const spawned = forEachGridPoint(grid, sel.room, (x, y) => {
-      this.ps.add(x, y, this.nextColor);
-      this.pickNextColor();
-    });
+    const spawned = this.history.run('Add particle grid', () =>
+      forEachGridPoint(grid, sel.room, (x, y) => {
+        this.ps.add(x, y, this.nextColor);
+        this.pickNextColor();
+      }),
+    );
     if (spawned > 0) this.onInteract();
     this.onGridSpawned(spawned, grid.count);
   }

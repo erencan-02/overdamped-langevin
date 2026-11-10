@@ -1,4 +1,4 @@
-# Potential SDE
+# Langevin Dynamics
 
 An interactive, real-time simulator of the overdamped Langevin equation
 
@@ -35,6 +35,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Spray particles | Particle mode, **Shift + drag** |
 | Spawn a grid of particles | Particle mode, **right-drag** a rectangle; spacing is set by *Grid spacing* in the panel |
 | Remove a particle | Particle mode, **right-click** it |
+| Undo / redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>): brush strokes and other changes of Ψ, added and removed particles |
 | Pan | Hold the **mouse wheel** and drag (or **Alt + drag**) |
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
@@ -138,7 +139,7 @@ runs appear in the *Recordings* panel on the right and download as `.npz` files:
 import json
 import numpy as np
 
-run = np.load("potential-sde-run-1.npz")
+run = np.load("langevin-dynamics-run-1.npz")
 meta = json.loads(str(run["metadata"]))          # constants, start parameters, array docs
 off = run["frame_offsets"]                       # frame k: rows off[k]:off[k+1]
 k = 10

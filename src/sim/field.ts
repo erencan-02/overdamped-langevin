@@ -40,6 +40,24 @@ export class Chunk {
   ) {}
 }
 
+/** Ψ of one chunk at some moment; `psi` null means Ψ = 0 there (e.g. not allocated yet). */
+export interface ChunkState {
+  cx: number;
+  cy: number;
+  psi: Float32Array | null;
+}
+
+/**
+ * A change of Ψ: the chunks it touched, as they were before and after. Applying `before`
+ * undoes it, applying `after` redoes it (see PotentialField.applyChunks).
+ */
+export interface PotentialEdit {
+  before: ChunkState[];
+  after: ChunkState[];
+  /** Memory held by the copies, in bytes. */
+  bytes: number;
+}
+
 /** Integer key of chunk (cx, cy), or −1 if it lies outside the supported range. */
 export function chunkKey(cx: number, cy: number): number {
   if (cx < -CHUNK_LIMIT || cx > CHUNK_LIMIT || cy < -CHUNK_LIMIT || cy > CHUNK_LIMIT) return -1;
@@ -62,6 +80,11 @@ export class PotentialField {
   /** Bumped on every change of Ψ (painting, presets, clearing). */
   revision = 0;
   /** Scratch rows for writeGrid (reused between video frames). */
+  /**
+   * While an edit is being recorded (beginEdit … endEdit): every chunk as it was before its
+   * first change in this edit.
+   */
+  private editBefore: Map<number, ChunkState> | null = null;
   private rowScratch = new Float32Array(0);
   private colIdx = new Int32Array(0);
   private colW = new Float32Array(0);
@@ -147,6 +170,7 @@ export class PotentialField {
   }
 
   clear(): void {
+    if (this.editBefore) for (const c of this.chunks.values()) this.noteBeforeChange(c.cx, c.cy);
     this.chunks.clear();
     this.dirty.clear();
     this.index = [];
@@ -154,6 +178,60 @@ export class PotentialField {
     this.indexH = 0;
     this.epoch++;
     this.revision++;
+  }
+
+  // ---------------------------------------------------------------- undo support
+
+  /** Starts recording the chunks that change, for undo (see endEdit). */
+  beginEdit(): void {
+    this.editBefore ??= new Map();
+  }
+
+  /**
+   * Stops recording and returns the chunks that actually changed since beginEdit, before and
+   * after, or null if Ψ did not change.
+   */
+  endEdit(): PotentialEdit | null {
+    const before = this.editBefore;
+    this.editBefore = null;
+    if (!before) return null;
+    const edit: PotentialEdit = { before: [], after: [], bytes: 0 };
+    for (const [key, b] of before) {
+      const now = this.chunks.get(key);
+      const a: ChunkState = { cx: b.cx, cy: b.cy, psi: now ? now.psi.slice() : null };
+      if (samePsi(a.psi, b.psi)) continue; // allocated or prepared, but not changed
+      edit.before.push(b);
+      edit.after.push(a);
+      edit.bytes += (b.psi?.byteLength ?? 0) + (a.psi?.byteLength ?? 0);
+    }
+    return edit.before.length ? edit : null;
+  }
+
+  /**
+   * Sets Ψ in the given chunks (a `before` or `after` list of an edit) and updates the
+   * gradient around them. Other chunks are not touched.
+   */
+  applyChunks(states: readonly ChunkState[]): void {
+    for (const st of states) {
+      const c = this.ensureChunk(st.cx, st.cy);
+      if (st.psi) c.psi.set(st.psi);
+      else c.psi.fill(0);
+    }
+    for (const st of states) {
+      const i0 = st.cx << CHUNK_SHIFT;
+      const j0 = st.cy << CHUNK_SHIFT;
+      this.finishRegion(i0, j0, i0 + CHUNK_MASK, j0 + CHUNK_MASK);
+    }
+  }
+
+  /** Records chunk (cx, cy) as it is now, if an edit is open and it was not recorded yet. */
+  private noteBeforeChange(cx: number, cy: number): void {
+    const edits = this.editBefore;
+    if (!edits) return;
+    const key = chunkKey(cx, cy);
+    if (key < 0 || edits.has(key)) return;
+    const c = this.getChunk(cx, cy);
+    edits.set(key, { cx, cy, psi: c ? c.psi.slice() : null });
   }
 
   // ---------------------------------------------------------------- node access
@@ -432,7 +510,10 @@ export class PotentialField {
     const cj1 = (j1 + 1) >> CHUNK_SHIFT;
     if (chunkKey(ci0, cj0) < 0 || chunkKey(ci1, cj1) < 0) return false;
     for (let cy = cj0; cy <= cj1; cy++) {
-      for (let cx = ci0; cx <= ci1; cx++) this.ensureChunk(cx, cy);
+      for (let cx = ci0; cx <= ci1; cx++) {
+        this.noteBeforeChange(cx, cy); // only while an edit is recorded
+        this.ensureChunk(cx, cy);
+      }
     }
     return true;
   }
@@ -480,4 +561,12 @@ export class PotentialField {
       }
     }
   }
+}
+
+/** Whether two chunk states hold the same Ψ (null counts as all zeros). */
+function samePsi(a: Float32Array | null, b: Float32Array | null): boolean {
+  if (a === b) return true;
+  const n = CHUNK * CHUNK;
+  for (let k = 0; k < n; k++) if ((a ? a[k] : 0) !== (b ? b[k] : 0)) return false;
+  return true;
 }

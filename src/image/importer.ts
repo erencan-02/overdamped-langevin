@@ -20,6 +20,8 @@ export interface ImporterHooks {
   /** Called after Ψ (or the particles) were replaced by the image. */
   onImported(info: { name: string; inverted: boolean; target: ImportTarget; count: number }): void;
   onError(message: string): void;
+  /** Wraps each change of Ψ or of the particles (e.g. to make it one undo step). */
+  edit?<T>(label: string, change: () => T): T;
 }
 
 const LOADING_TITLE: Record<ImportTarget, string> = {
@@ -205,7 +207,10 @@ export class ImageImporter {
     // One sample per lattice node: pixel (i, j) (rows top to bottom) sits at (x0 + i·h, yTop − j·h).
     const x0 = Math.round((cx - image.worldWidth / 2) / h) * h;
     const yTop = Math.round((cy + image.worldHeight / 2) / h) * h;
-    const count = target === 'potential' ? this.applyPotential(image, x0, yTop, inverted) : this.applyParticles(image, x0, yTop, inverted);
+    const change = () =>
+      target === 'potential' ? this.applyPotential(image, x0, yTop, inverted) : this.applyParticles(image, x0, yTop, inverted);
+    const label = `${inverted ? 'Inverted image' : 'Image'} → ${target === 'potential' ? 'Ψ' : 'particles'}`;
+    const count = this.hooks.edit ? this.hooks.edit(label, change) : change();
     if (count > 0) this.camera.showRect(x0, yTop - image.worldHeight, x0 + image.worldWidth, yTop);
     return count;
   }

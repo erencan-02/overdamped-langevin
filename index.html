@@ -8,7 +8,7 @@
       content="Paint a potential landscape and watch particles follow the stochastic differential equation dX = −∇Ψ(X) dt + σ dW in real time."
     />
     <meta name="theme-color" content="#ffffff" />
-    <title>Potential SDE</title>
+    <title>Langevin Dynamics</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,7 +25,7 @@
 
     <!-- Title -->
     <div class="brand card">
-      <div class="brand-title">Potential SDE</div>
+      <div class="brand-title">Langevin Dynamics</div>
       <div class="brand-eq">dX<sub>t</sub> = −∇Ψ(X<sub>t</sub>) dt + σ dW<sub>t</sub></div>
     </div>
 
@@ -88,6 +88,9 @@
           <button role="menuitem" data-action="import-image">Image → Ψ…<kbd>I</kbd></button>
           <button role="menuitem" data-action="import-image-particles">Image → particles…<kbd>⇧I</kbd></button>
           <button role="menuitem" data-action="open-recording">Open recording (.npz)…<kbd>O</kbd></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem" data-action="undo">Undo<kbd>Ctrl Z</kbd></button>
+          <button role="menuitem" data-action="redo">Redo<kbd>Ctrl ⇧Z</kbd></button>
           <div class="menu-sep"></div>
           <button role="menuitem" data-action="clear-particles">Clear particles<kbd>C</kbd></button>
           <button role="menuitem" data-action="clear-field">Clear potential<kbd>X</kbd></button>
@@ -153,7 +156,7 @@
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
         </button>
         <div class="analysis-body" id="analysis-body">
-          <div class="kl-caption">KL(ρ̂<sub>h</sub> ‖ π) inside the dashed box, over simulated time</div>
+          <div class="kl-caption">KL(<span class="tex" data-tex="\hat{\rho}_h"><math><msub><mover accent="true"><mi>ρ</mi><mo>^</mo></mover><mi>h</mi></msub></math></span> ‖ π) inside the dashed box, over simulated time</div>
           <canvas id="kl-plot" class="ts-plot" aria-label="KL divergence over time"></canvas>
           <div class="kl-legend">
             <span><i class="lg-line"></i>particles ∗ kernel vs Gibbs</span>
@@ -162,7 +165,7 @@
           <label class="switch-row">
             <input type="checkbox" id="show-density" />
             <span class="switch" aria-hidden="true"></span>
-            <span>Show ρ̂<sub>h</sub> on the scene <kbd>D</kbd></span>
+            <span>Show <span class="tex" data-tex="\hat{\rho}_h"><math><msub><mover accent="true"><mi>ρ</mi><mo>^</mo></mover><mi>h</mi></msub></math></span> on the scene <kbd>D</kbd></span>
           </label>
           <label class="field">
             <span class="field-head"><span>Kernel variance h²</span><output id="kernel-var-out"></output></span>
@@ -176,50 +179,56 @@
         </div>
       </section>
 
-      <div class="panel card" id="panel">
-        <label class="field">
-          <span class="field-head"><span>Diffusivity <i class="math">σ</i></span><output id="sigma-out"></output></span>
-          <input type="range" id="sigma" min="0" max="1" step="0.001" />
-        </label>
-        <label class="field">
-          <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
-          <input type="range" id="speed" min="0" max="1" step="0.001" />
-        </label>
-        <div class="field">
-          <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
-          <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
-            <button role="radio" data-scheme="heun">Heun</button>
-            <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+      <section class="analysis settings card" id="settings" aria-label="Settings">
+        <button class="analysis-head" id="settings-toggle" type="button" aria-expanded="true" aria-controls="panel">
+          <span class="analysis-title">Settings</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="panel" id="panel">
+          <label class="field">
+            <span class="field-head"><span>Diffusivity <i class="math">σ</i></span><output id="sigma-out"></output></span>
+            <input type="range" id="sigma" min="0" max="1" step="0.001" />
+          </label>
+          <label class="field">
+            <span class="field-head"><span>Speed</span><output id="speed-out"></output></span>
+            <input type="range" id="speed" min="0" max="1" step="0.001" />
+          </label>
+          <div class="field">
+            <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
+            <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
+              <button role="radio" data-scheme="heun">Heun</button>
+              <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+            </div>
+            <span class="field-note" id="scheme-note"></span>
           </div>
-          <span class="field-note" id="scheme-note"></span>
-        </div>
-        <label class="field seed-field">
-          <span class="field-head"><span>Seed</span></span>
-          <input type="number" id="seed" min="0" max="4294967295" step="1" value="0" inputmode="numeric" />
-          <span class="field-note">Same seed and same actions give exactly the same run.</span>
-        </label>
-        <div class="mode-only" data-for="brush">
-          <div class="panel-sep"></div>
-          <label class="field">
-            <span class="field-head"><span>Brush size</span><output id="brush-size-out"></output></span>
-            <input type="range" id="brush-size" min="0" max="1" step="0.001" />
+          <label class="field seed-field">
+            <span class="field-head"><span>Seed</span></span>
+            <input type="number" id="seed" min="0" max="4294967295" step="1" value="0" inputmode="numeric" />
+            <span class="field-note">Same seed and same actions give exactly the same run.</span>
           </label>
-          <label class="field">
-            <span class="field-head"><span>Brush strength</span><output id="brush-strength-out"></output></span>
-            <input type="range" id="brush-strength" min="0" max="1" step="0.001" />
-          </label>
+          <div class="mode-only" data-for="brush">
+            <div class="panel-sep"></div>
+            <label class="field">
+              <span class="field-head"><span>Brush size</span><output id="brush-size-out"></output></span>
+              <input type="range" id="brush-size" min="0" max="1" step="0.001" />
+            </label>
+            <label class="field">
+              <span class="field-head"><span>Brush strength</span><output id="brush-strength-out"></output></span>
+              <input type="range" id="brush-strength" min="0" max="1" step="0.001" />
+            </label>
+          </div>
+          <div class="mode-only" data-for="particles">
+            <div class="panel-sep"></div>
+            <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
+            <label class="field">
+              <span class="field-head"><span>Grid spacing</span><output id="grid-spacing-out"></output></span>
+              <input type="range" id="grid-spacing" min="0" max="1" step="0.001" />
+              <span class="field-note">Right-drag a rectangle to fill it with particles at this spacing.</span>
+            </label>
+            <button id="clear-particles" class="ghost-btn">Clear particles</button>
+          </div>
         </div>
-        <div class="mode-only" data-for="particles">
-          <div class="panel-sep"></div>
-          <div class="field-head"><span>Particles</span><output id="particle-count"></output></div>
-          <label class="field">
-            <span class="field-head"><span>Grid spacing</span><output id="grid-spacing-out"></output></span>
-            <input type="range" id="grid-spacing" min="0" max="1" step="0.001" />
-            <span class="field-note">Right-drag a rectangle to fill it with particles at this spacing.</span>
-          </label>
-          <button id="clear-particles" class="ghost-btn">Clear particles</button>
-        </div>
-      </div>
+      </section>
     </div>
 
     <!-- Colour legend + readout -->
@@ -318,7 +327,7 @@
         <button class="modal-close icon-btn" id="help-close" aria-label="Close help">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
-        <h2 id="help-title">Potential SDE</h2>
+        <h2 id="help-title">Langevin Dynamics</h2>
         <p class="lead">
           Paint a potential landscape <span class="tex" data-tex="\Psi"></span>, drop particles, and watch them follow an overdamped Langevin
           equation. The walkthrough below explains the mathematics behind the simulation and the
@@ -476,7 +485,7 @@
             <ul>
               <li><b>Observable</b> (left): type a test function <i>f</i>(<i>x</i>, <i>y</i>) in LaTeX and compare the particle mean of <i>f</i> (with its 95&nbsp;% band) to the exact ∫ <i>f</i> dπ</li>
               <li><b>KL to equilibrium</b> (left): live plot, kernel variance, box</li>
-              <li><b>Show ρ̂<sub>h</sub></b> draws the smoothed particle density in pink</li>
+              <li><b>Show <span class="tex" data-tex="\hat{\rho}_h"><math><msub><mover accent="true"><mi>ρ</mi><mo>^</mo></mover><mi>h</mi></msub></math></span></b> draws the smoothed particle density in pink</li>
               <li><b>Record button</b>: start / stop a run; downloads as <code>.npz</code> in the Recordings panel (right)</li>
               <li><b>Drop an <code>.npz</code></b> to replay it: the player at the bottom scrubs through the run; changing Ψ, particles or a physics setting leaves playback and continues from there</li>
               <li><b>Seed</b> (panel): the same seed and the same actions give exactly the same run</li>
@@ -499,9 +508,10 @@
               <li><kbd>F</kbd> Force field −∇Ψ</li>
               <li><kbd>I</kbd> Image → Ψ · <kbd>⇧</kbd><kbd>I</kbd> Image → particles</li>
               <li><kbd>V</kbd> Live camera as Ψ · <kbd>O</kbd> Open recording</li>
-              <li><kbd>D</kbd> Show ρ̂<sub>h</sub> · <kbd>⇧</kbd><kbd>R</kbd> Record</li>
+              <li><kbd>D</kbd> Show <span class="tex" data-tex="\hat{\rho}_h"><math><msub><mover accent="true"><mi>ρ</mi><mo>^</mo></mover><mi>h</mi></msub></math></span> · <kbd>⇧</kbd><kbd>R</kbd> Record</li>
               <li><kbd>S</kbd> Switch numerical scheme</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
+              <li><kbd>Ctrl</kbd><kbd>Z</kbd> Undo · <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Z</kbd> or <kbd>Ctrl</kbd><kbd>Y</kbd> Redo (Ψ edits, added and removed particles)</li>
               <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>
             </ul>
           </section>

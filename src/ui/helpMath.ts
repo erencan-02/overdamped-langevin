@@ -5,8 +5,9 @@
 import 'katex/dist/katex.min.css';
 import katex from 'katex';
 
-export function renderMath(root: ParentNode): void {
-  for (const el of root.querySelectorAll<HTMLElement>('[data-tex]')) {
+/** Typesets every element matching `selector` (its LaTeX in `data-tex`) inside `root`. */
+export function renderMath(root: ParentNode, selector = '[data-tex]'): void {
+  for (const el of root.querySelectorAll<HTMLElement>(selector)) {
     if (el.dataset.rendered) continue;
     katex.render(el.dataset.tex ?? '', el, {
       displayMode: el.hasAttribute('data-display'),

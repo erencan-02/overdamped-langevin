@@ -3,11 +3,13 @@ import { CELL_SIZE, PALETTE, PSI_CAP } from './config';
 import { Renderer } from './render/renderer';
 import { PotentialField } from './sim/field';
 import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES, ParticleSystem } from './sim/particles';
+import { UndoHistory } from './sim/history';
 import { RandomStreams } from './sim/random';
 import { applyPreset, type PresetName } from './sim/presets';
 import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
+import { CollapsiblePanel } from './ui/collapsiblePanel';
 import { KlPanel } from './ui/klPanel';
 import { RecordingsPanel } from './ui/recordingsPanel';
 import { InputController } from './ui/input';
@@ -54,6 +56,8 @@ function main(): void {
   const particles = new ParticleSystem(random.get('dynamics'));
   particles.scheme = SCHEMES[state.scheme];
   const camera = new Camera();
+  // Undo/redo of brush strokes and other changes of Ψ, and of added/removed particles.
+  const history = new UndoHistory(field, particles);
 
   let renderer: Renderer;
   try {
@@ -64,7 +68,7 @@ function main(): void {
     return;
   }
   const overlay = new Overlay(overlayCanvas);
-  const input = new InputController(stage, camera, field, particles, state, random);
+  const input = new InputController(stage, camera, field, particles, state, random, history);
 
   const actions: ControlActions = {
     setMode(mode: Mode) {
@@ -121,13 +125,24 @@ function main(): void {
       controls.sync();
     },
     clearParticles() {
-      particles.clear();
-      controls.showToast('Particles cleared');
+      if (particles.count === 0) return;
+      history.run('Clear particles', () => particles.clear());
+      controls.showToast('Particles cleared', { label: 'Undo', run: () => actions.undo() });
     },
     clearField() {
       liveCamera.stop();
-      field.clear();
-      controls.showToast('Potential cleared');
+      history.run('Clear Ψ', () => field.clear());
+      controls.showToast('Potential cleared', { label: 'Undo', run: () => actions.undo() });
+    },
+    undo() {
+      if (busy.active || input.busy || history.recording) return;
+      const label = history.undo();
+      controls.showToast(label ? `Undone: ${label}` : 'Nothing to undo');
+    },
+    redo() {
+      if (busy.active || input.busy || history.recording) return;
+      const label = history.redo();
+      controls.showToast(label ? `Redone: ${label}` : 'Nothing to redo');
     },
     resetView() {
       camera.reset();
@@ -145,10 +160,17 @@ function main(): void {
     },
     preset(name: string) {
       liveCamera.stop();
-      applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets'));
+      history.run('Preset', () => applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets')));
     },
   };
   const controls = new Controls(state, actions);
+  // The settings card collapses like the analysis windows (open at start).
+  new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {}).setOpen(true);
+  // Formulas in the side panels (e.g. ρ̂_h) are typeset with KaTeX, loaded without delaying start.
+  const sidePanels = document.querySelector<HTMLElement>('.left-col');
+  if (sidePanels) {
+    void import('./ui/helpMath').then((m) => m.renderMath(sidePanels, '.tex[data-tex]')).catch((err) => console.error(err));
+  }
 
   const recorder = new Recorder({
     field,
@@ -208,6 +230,7 @@ function main(): void {
   // Playback of recorded runs: a floating player; altering the simulation leaves playback.
   const playback: Playback = new Playback(session, {
     onEnter: (timeline) => {
+      history.clear(); // the recording replaces Ψ and the particles: earlier steps no longer apply
       state.playing = false;
       playerBar.show(timeline);
       controls.setPlaybackLock(true);
@@ -250,6 +273,8 @@ function main(): void {
     {
       onStateChange: (s) => {
         controls.setCameraState(s);
+        // The camera rewrites Ψ every frame: steps recorded before it no longer apply.
+        if (s === 'live') history.clear();
         if (s === 'starting') controls.showToast('Waiting for camera permission…');
         if (s === 'live') {
           controls.showToast('Camera live: dark areas are valleys', {
@@ -284,6 +309,7 @@ function main(): void {
       controls.showToast(text, { label: 'Invert', run: () => importer.invertLast() });
     },
     onError: (message) => controls.showToast(message),
+    edit: (label, change) => history.run(label, change),
   });
 
   // ---------------------------------------------------------------- recordings & drag and drop
@@ -323,8 +349,17 @@ function main(): void {
       e.preventDefault();
       return;
     }
-    if (e.ctrlKey || e.metaKey) return;
     const target = e.target instanceof HTMLElement ? e.target : null;
+    const typing = !!target?.matches('input[type="text"], input[type="number"], textarea, [contenteditable="true"]');
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo (⌘ on macOS). In a text field they edit the text.
+      const key = e.key.toLowerCase();
+      if (typing || e.altKey || controls.helpOpen || (key !== 'z' && key !== 'y')) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) actions.redo();
+      else actions.undo();
+      return;
+    }
     const onButtonOrInput = target?.closest('button, input') ?? null;
     if (e.key === 'Escape') {
       input.cancel(); // e.g. abandons a spawn rectangle that is being dragged
@@ -333,7 +368,7 @@ function main(): void {
     }
     if (controls.helpOpen && e.key !== '?') return;
     // Typing in a text field (the test function, the seed) is not a shortcut.
-    if (target?.matches('input[type="text"], input[type="number"], textarea, [contenteditable="true"]')) return;
+    if (typing) return;
     switch (e.key) {
       case ' ':
         // Space would also "click" a focused button; take focus away and toggle once.
@@ -531,6 +566,7 @@ function main(): void {
       monitor,
       observables,
       recorder,
+      history,
       session,
       playback,
       get renderer() {

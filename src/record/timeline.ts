@@ -3,6 +3,7 @@ import type { ParticlesSnapshot, PotentialSnapshot } from '../session/components
 import type { Snapshot } from '../session/session';
 import type { SchemeId } from '../sim/schemes';
 import type { NpyValue, NumericArray } from './npzRead';
+import { RECORDING_FORMATS } from './recorder';
 
 const SCHEME_NAMES: SchemeId[] = ['heun', 'euler-maruyama'];
 
@@ -57,8 +58,8 @@ export class RecordingTimeline {
         throw new RecordingError('The recording metadata is damaged.');
       }
     }
-    if (meta.format !== undefined && meta.format !== 'potential-sde-run') {
-      throw new RecordingError('This .npz file is not a Potential SDE recording.');
+    if (meta.format !== undefined && !RECORDING_FORMATS.includes(meta.format as string)) {
+      throw new RecordingError('This .npz file is not a Langevin Dynamics recording.');
     }
     this.metadata = meta;
     this.version = typeof meta.format_version === 'number' ? meta.format_version : 1;

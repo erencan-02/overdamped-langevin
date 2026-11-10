@@ -21,6 +21,20 @@ const MAX_SUBSTEPS = 160;
  */
 export const DEFAULT_WORK_BUDGET = 80_000;
 
+/** A particle as it was added or removed (for undo). */
+export interface ParticleRecord {
+  id: number;
+  x: number;
+  y: number;
+  color: number;
+}
+
+/** A change of the particle set: who was added and who was removed (see beginEdit). */
+export interface ParticleEdit {
+  added: ParticleRecord[];
+  removed: ParticleRecord[];
+}
+
 /**
  * Ensemble of independent particles following the overdamped Langevin SDE
  *
@@ -69,6 +83,8 @@ export class ParticleSystem {
   scheme: Scheme;
 
   private trailClock = 0;
+  /** While an edit is recorded: particles added and removed since beginEdit, by id. */
+  private editLog: { added: Map<number, ParticleRecord>; removed: Map<number, ParticleRecord> } | null = null;
 
   constructor(
     readonly rng: Rng = new Rng(),
@@ -90,12 +106,14 @@ export class ParticleSystem {
     this.id[i] = this.nextId++;
     this.trailCount[i] = 0;
     this.version++;
+    this.editLog?.added.set(this.id[i], { id: this.id[i], x, y, color });
     return true;
   }
 
   /** Removes particle i in O(TRAIL_LEN) by moving the last particle into its place. */
   removeAt(i: number): void {
     if (i < 0 || i >= this.count) return;
+    this.noteRemoval(i);
     const last = --this.count;
     if (i !== last) {
       this.x[i] = this.x[last];
@@ -159,8 +177,65 @@ export class ParticleSystem {
   }
 
   clear(): void {
+    if (this.editLog) for (let i = 0; i < this.count; i++) this.noteRemoval(i);
     this.count = 0;
     this.version++;
+  }
+
+  // ---------------------------------------------------------------- undo support
+
+  /** Starts recording which particles are added and removed (see endEdit). */
+  beginEdit(): void {
+    this.editLog ??= { added: new Map(), removed: new Map() };
+  }
+
+  /** Stops recording; returns the particles added and removed, or null if there were none. */
+  endEdit(): ParticleEdit | null {
+    const log = this.editLog;
+    this.editLog = null;
+    if (!log || (log.added.size === 0 && log.removed.size === 0)) return null;
+    return { added: [...log.added.values()], removed: [...log.removed.values()] };
+  }
+
+  /** Removes every particle whose id is in `ids` (ids that are not present are ignored). */
+  removeIds(ids: ReadonlySet<number>): void {
+    if (ids.size === 0) return;
+    // Backwards, so the particle that removeAt moves into slot i has been checked already.
+    for (let i = this.count - 1; i >= 0; i--) if (ids.has(this.id[i])) this.removeAt(i);
+  }
+
+  /**
+   * Adds particles back with their original ids and colours (undo/redo). Ids that are present
+   * already are skipped. Returns how many were added (fewer if MAX_PARTICLES is reached).
+   */
+  restore(records: readonly ParticleRecord[]): number {
+    const present = new Set<number>();
+    for (let i = 0; i < this.count; i++) present.add(this.id[i]);
+    let added = 0;
+    for (const r of records) {
+      if (present.has(r.id)) continue;
+      if (this.count >= MAX_PARTICLES) break;
+      const i = this.count++;
+      this.x[i] = r.x;
+      this.y[i] = r.y;
+      this.color[i] = r.color;
+      this.id[i] = r.id;
+      this.trailCount[i] = 0;
+      if (r.id >= this.nextId) this.nextId = r.id + 1;
+      present.add(r.id);
+      added++;
+    }
+    if (added) this.version++;
+    return added;
+  }
+
+  /** Records the removal of particle i in the open edit (an added-then-removed one cancels out). */
+  private noteRemoval(i: number): void {
+    const log = this.editLog;
+    if (!log) return;
+    const id = this.id[i];
+    if (log.added.has(id)) log.added.delete(id);
+    else log.removed.set(id, { id, x: this.x[i], y: this.y[i], color: this.color[i] });
   }
 
   clearTrails(): void {

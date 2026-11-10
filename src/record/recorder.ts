@@ -28,6 +28,11 @@ export interface RecordedParams {
   playing: boolean;
 }
 
+/** Format name in the metadata of recordings (files made before the app was renamed say 'potential-sde-run'). */
+export const RECORDING_FORMAT = 'langevin-dynamics-run';
+/** Format names accepted when reading a recording. */
+export const RECORDING_FORMATS: readonly string[] = [RECORDING_FORMAT, 'potential-sde-run'];
+
 /** Current version of the recording format (see `metadata.format_version`). */
 export const FORMAT_VERSION = 2;
 
@@ -203,7 +208,7 @@ export class Run {
       obs_expr: { dtype: '<i4', shape: [O], data: Int32Array.from(this.obsExpr) },
     };
     const metadata = {
-      format: 'potential-sde-run',
+      format: RECORDING_FORMAT,
       format_version: FORMAT_VERSION,
       name: this.name,
       started_at: this.startedAt.toISOString(),
