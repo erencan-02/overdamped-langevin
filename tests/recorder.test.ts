@@ -39,7 +39,7 @@ describe('Recorder', () => {
     field.applyBrush(0, 0, -3, 0.6);
     const ps = new ParticleSystem(new Rng(1));
     for (let i = 0; i < 5; i++) ps.add(i * 0.1, 0, i);
-    const params = { sigma: 0.6, speed: 1, kernelVariance: 0.09, scheme: 'heun' as const, playing: true };
+    const params = { sigma: 0.6, speed: 1, kernelVariance: 0.09, scheme: 'heun' as const, seed: 0, playing: true };
     const rec = new Recorder({ field, particles: ps, params: () => params });
 
     let now = 1000;

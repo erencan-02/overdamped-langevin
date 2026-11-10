@@ -134,6 +134,7 @@ function main(): void {
       speed: state.speed,
       kernelVariance: state.kernelVariance,
       scheme: state.scheme,
+      seed: state.seed,
       playing: state.playing,
     }),
   });

@@ -23,8 +23,12 @@ export interface RecordedParams {
   speed: number;
   kernelVariance: number;
   scheme: SchemeId;
+  seed: number;
   playing: boolean;
 }
+
+/** Current version of the recording format (see `metadata.format_version`). */
+export const FORMAT_VERSION = 2;
 
 /** Ψ snapshot region: lattice nodes x0 + i·cell, y0 + j·cell for i < nx, j < ny. */
 interface PsiGrid {
@@ -49,8 +53,12 @@ export class Run {
   readonly wall: number[] = [];
   readonly counts: number[] = [];
   readonly ids: Uint32Array[] = [];
-  readonly xs: Float32Array[] = [];
-  readonly ys: Float32Array[] = [];
+  readonly xs: Float64Array[] = [];
+  readonly ys: Float64Array[] = [];
+  /** Exact integrator state per frame, so a run can be continued from any frame. */
+  readonly rngState: Uint32Array[] = [];
+  readonly clockRemainder: number[] = [];
+  readonly nextId: number[] = [];
   readonly colorOf = new Map<number, number>();
 
   // Parameters per frame.
@@ -59,6 +67,7 @@ export class Run {
   readonly kernelVariance: number[] = [];
   readonly scheme: number[] = [];
   readonly playing: number[] = [];
+  readonly seed: number[] = [];
 
   // Ψ snapshots.
   readonly psiGrid: PsiGrid;
@@ -75,11 +84,20 @@ export class Run {
   readonly klBox: number[] = [];
 
   readonly startParams: RecordedParams;
+  /** Full settings snapshot at the start (session groups: display, tools, view, …). */
+  readonly startSettings: Record<string, unknown>;
 
-  constructor(index: number, wallStart: number, psiBox: Box, params: RecordedParams) {
+  constructor(
+    index: number,
+    wallStart: number,
+    psiBox: Box,
+    params: RecordedParams,
+    settings: Record<string, unknown>,
+  ) {
     this.name = `Run ${index}`;
     this.wallStart = wallStart;
     this.startParams = { ...params };
+    this.startSettings = settings;
     const i0 = Math.ceil(psiBox.x0 / CELL_SIZE);
     const i1 = Math.floor(psiBox.x1 / CELL_SIZE);
     const j0 = Math.ceil(psiBox.y0 / CELL_SIZE);
@@ -111,8 +129,8 @@ export class Run {
     for (let k = 0; k < F; k++) offsets[k + 1] = offsets[k] + this.counts[k];
     const total = offsets[F];
     const pid = new Uint32Array(total);
-    const px = new Float32Array(total);
-    const py = new Float32Array(total);
+    const px = new Float64Array(total);
+    const py = new Float64Array(total);
     for (let k = 0; k < F; k++) {
       pid.set(this.ids[k], offsets[k]);
       px.set(this.xs[k], offsets[k]);
@@ -134,8 +152,8 @@ export class Run {
       wall_time: f8(this.wall),
       frame_offsets: { dtype: '<i4', shape: [F + 1], data: offsets },
       particle_id: { dtype: '<u4', shape: [total], data: pid },
-      x: { dtype: '<f4', shape: [total], data: px },
-      y: { dtype: '<f4', shape: [total], data: py },
+      x: { dtype: '<f8', shape: [total], data: px },
+      y: { dtype: '<f8', shape: [total], data: py },
       ids: { dtype: '<u4', shape: [ids.length], data: ids },
       id_color: { dtype: '|u1', shape: [colors.length], data: colors },
       palette_rgb: { dtype: '<f4', shape: [PALETTE.length, 3], data: PALETTE_RGB },
@@ -144,6 +162,10 @@ export class Run {
       kernel_variance: f8(this.kernelVariance),
       scheme: u1(this.scheme),
       playing: u1(this.playing),
+      seed: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.seed) },
+      rng_state: { dtype: '<u4', shape: [F, 4], data: concatU32(this.rngState) },
+      clock_remainder: f8(this.clockRemainder),
+      next_id: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.nextId) },
       psi: { dtype: '<f4', shape: [S, g.ny, g.nx], data: psi },
       psi_t: f8(this.psiT),
       psi_wall_time: f8(this.psiWall),
@@ -161,7 +183,7 @@ export class Run {
     };
     const metadata = {
       format: 'potential-sde-run',
-      format_version: 1,
+      format_version: FORMAT_VERSION,
       name: this.name,
       started_at: this.startedAt.toISOString(),
       stopped_at: this.stoppedAt?.toISOString() ?? null,
@@ -177,13 +199,14 @@ export class Run {
         schemes: ['heun', 'euler-maruyama'],
       },
       start_parameters: this.startParams,
+      settings: this.startSettings,
       arrays: {
         t: 'simulated time of each frame (F)',
         wall_time: 'seconds since the recording started, per frame (F)',
         frame_offsets: 'frame k holds particle_id/x/y[frame_offsets[k]:frame_offsets[k+1]] (F+1)',
         particle_id: 'stable particle id (sum of counts)',
-        x: 'x position (sum of counts)',
-        y: 'y position (sum of counts)',
+        x: 'x position, float64 (sum of counts)',
+        y: 'y position, float64 (sum of counts)',
         ids: 'all particle ids that appear (M)',
         id_color: 'palette index of each id in `ids` (M)',
         palette_rgb: 'particle palette, RGB in [0, 1] (12 x 3)',
@@ -192,6 +215,10 @@ export class Run {
         kernel_variance: 'KDE kernel variance h^2 per frame (F)',
         scheme: '0 = stochastic Heun, 1 = Euler-Maruyama, per frame (F)',
         playing: '1 if the simulation was running, per frame (F)',
+        seed: 'seed of the random streams, per frame (F)',
+        rng_state: "state of the 'dynamics' xoshiro128** stream after each frame (F x 4)",
+        clock_remainder: 'simulated time carried over to the next fixed step, per frame (F)',
+        next_id: 'id the next new particle would get, per frame (F)',
         psi: 'Psi snapshots, psi[s, j, i] at (psi_grid[0] + i*psi_grid[2], psi_grid[1] + j*psi_grid[2]) (S x ny x nx)',
         psi_t: 'simulated time of each Psi snapshot (S)',
         psi_wall_time: 'seconds since the recording started, per Psi snapshot (S)',
@@ -213,6 +240,8 @@ export interface RecorderSources {
   field: PotentialField;
   particles: ParticleSystem;
   params(): RecordedParams;
+  /** Full settings snapshot stored in the metadata (optional). */
+  settings?(): Record<string, unknown>;
 }
 
 /**
@@ -239,7 +268,7 @@ export class Recorder {
   /** Starts a run; Ψ is recorded on `psiBox` (fixed for the run). */
   start(nowMs: number, psiBox: Box): Run {
     if (this.current) return this.current;
-    const run = new Run(++this.runIndex, nowMs, psiBox, this.src.params());
+    const run = new Run(++this.runIndex, nowMs, psiBox, this.src.params(), this.src.settings?.() ?? {});
     this.current = run;
     this.lastFrame = -Infinity;
     this.lastPsi = -Infinity;
@@ -276,7 +305,7 @@ export class Recorder {
     const p = this.src.params();
     const wall = (nowMs - run.wallStart) / 1000;
 
-    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.playing}`;
+    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}`;
     if (force || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
@@ -285,15 +314,19 @@ export class Recorder {
       run.wall.push(wall);
       run.counts.push(n);
       run.ids.push(ps.id.slice(0, n));
-      run.xs.push(Float32Array.from(ps.x.subarray(0, n)));
-      run.ys.push(Float32Array.from(ps.y.subarray(0, n)));
+      run.xs.push(ps.x.slice(0, n));
+      run.ys.push(ps.y.slice(0, n));
+      run.rngState.push(Uint32Array.from(ps.rng.getState()));
+      run.clockRemainder.push(ps.clockRemainder);
+      run.nextId.push(ps.nextId);
+      run.seed.push(p.seed);
       for (let i = 0; i < n; i++) if (!run.colorOf.has(ps.id[i])) run.colorOf.set(ps.id[i], ps.color[i]);
       run.sigma.push(p.sigma);
       run.speed.push(p.speed);
       run.kernelVariance.push(p.kernelVariance);
       run.scheme.push(SCHEME_CODES[p.scheme]);
       run.playing.push(p.playing ? 1 : 0);
-      run.bytes += n * 12 + 64;
+      run.bytes += n * 20 + 96;
     }
 
     const pKey = `${field.revision}|${field.epoch}`;
@@ -331,4 +364,14 @@ export class Recorder {
     run.klBox.push(box.x0, box.y0, box.x1, box.y1);
     run.bytes += 56;
   }
+}
+
+function concatU32(parts: Uint32Array[]): Uint32Array {
+  const out = new Uint32Array(parts.reduce((a, p) => a + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
 }
