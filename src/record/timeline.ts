@@ -31,6 +31,7 @@ export class RecordingTimeline {
   /** Formula of Ψ per frame (index into `potentialExpressions`, −1 = painted), if recorded. */
   private readonly potentialExpr: NumericArray | null;
   private readonly potentialExpressions: string[];
+  private readonly birthDeath: { on: NumericArray; birth: NumericArray; death: NumericArray } | null;
   private readonly rngState: NumericArray | null;
   private readonly clockRemainder: NumericArray | null;
   private readonly nextId: NumericArray | null;
@@ -90,6 +91,10 @@ export class RecordingTimeline {
     if (idList && idColor) for (let k = 0; k < idList.length; k++) this.colorOf.set(idList[k], idColor[k] ?? 0);
 
     this.potentialExpr = num('potential_expr');
+    const on = num('birth_death');
+    const birth = num('birth_rate');
+    const death = num('death_rate');
+    this.birthDeath = on && birth && death ? { on, birth, death } : null;
     const exprs = meta.potential_expressions;
     this.potentialExpressions = Array.isArray(exprs) ? exprs.filter((e): e is string => typeof e === 'string') : [];
     this.perFrame = {
@@ -223,6 +228,13 @@ export class RecordingTimeline {
     const tex = e >= 0 ? this.potentialExpressions[e] : undefined;
     physics.potentialMode = tex ? 'formula' : 'painted';
     if (tex) physics.potentialTex = tex;
+    // Births and deaths (off in recordings made before they existed).
+    const bd = this.birthDeath;
+    physics.birthDeath = bd ? bd.on[k] === 1 : false;
+    if (bd) {
+      physics.birthRate = bd.birth[k];
+      physics.deathRate = bd.death[k];
+    }
     snap.physics = physics;
     if (pf.kernelVariance) snap.analysis = { kernelVariance: pf.kernelVariance[k] };
 

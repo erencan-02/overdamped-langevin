@@ -40,6 +40,10 @@ export interface AppState {
   potentialMode: PotentialMode;
   /** The formula Ψ(t, x, y) in LaTeX (used in 'formula' mode; always a valid expression). */
   potentialTex: string;
+  /** Particles are born (rate λ) and die (rate μ), each with its own exponential clocks. */
+  birthDeath: boolean;
+  birthRate: number;
+  deathRate: number;
   /** Test function f(x, y) of the observables window, in LaTeX (always a valid expression). */
   observable: string;
 }
@@ -64,6 +68,9 @@ export function initialState(): AppState {
     view: '2d',
     potentialMode: 'painted',
     potentialTex: DEFAULTS.potential,
+    birthDeath: false,
+    birthRate: DEFAULTS.birthRate,
+    deathRate: DEFAULTS.deathRate,
     observable: DEFAULTS.observable,
   };
 }

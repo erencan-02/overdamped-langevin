@@ -47,6 +47,9 @@ export const DEFAULTS = {
   brushStrength: 6,
   particleSpacing: 0.5,
   kernelVariance: 0.09,
+  /** Birth and death rates λ, μ per particle and unit of simulated time. */
+  birthRate: 0.5,
+  deathRate: 0.5,
   /** Potential formula Ψ(t, x, y) of the potential window (LaTeX): a double well. */
   potential: '\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}',
   /** Test function of the observables window (LaTeX). */
@@ -62,5 +65,7 @@ export const RANGES = {
   brushStrength: [0.5, 30],
   particleSpacing: [0.1, 3],
   kernelVariance: [0.0025, 4],
+  birthRate: [0, 100],
+  deathRate: [0, 100],
   scale: [6, 2500],
 } as const;

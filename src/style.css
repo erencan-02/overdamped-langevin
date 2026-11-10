@@ -886,6 +886,15 @@ input[type='range']:active::-webkit-slider-thumb {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
+.kl-actions.single {
+  grid-template-columns: 1fr;
+}
+/* Two rates side by side (birth/death window). */
+.bd-rates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 .kl-actions .ghost-btn {
   height: 28px;
   font-size: 12px;

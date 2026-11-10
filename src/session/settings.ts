@@ -53,7 +53,16 @@ export abstract class SettingsGroup<K extends keyof AppState> extends StateCompo
   protected afterApply(_changed: K[]): void {}
 }
 
-type PhysicsKey = 'sigma' | 'speed' | 'scheme' | 'seed' | 'potentialMode' | 'potentialTex';
+type PhysicsKey =
+  | 'sigma'
+  | 'speed'
+  | 'scheme'
+  | 'seed'
+  | 'potentialMode'
+  | 'potentialTex'
+  | 'birthDeath'
+  | 'birthRate'
+  | 'deathRate';
 
 /** Parameters of the dynamics. Applied first: the seed resets the random streams. */
 export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
@@ -67,6 +76,9 @@ export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
     new EnumField<PotentialMode>('potentialMode', ['painted', 'formula']),
     // Checked by the potential window when applied (the LaTeX parser loads on demand).
     new StringField('potentialTex', 500),
+    new BooleanField('birthDeath'),
+    new NumberField('birthRate', ...RANGES.birthRate),
+    new NumberField('deathRate', ...RANGES.deathRate),
   ] as Field<AppState[PhysicsKey]>[];
 
   constructor(

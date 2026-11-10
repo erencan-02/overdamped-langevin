@@ -147,6 +147,45 @@
         </div>
       </section>
 
+      <!-- Births and deaths: every particle has exponential birth and death clocks -->
+      <section class="analysis card collapsed" id="birthdeath" aria-label="Birth and death">
+        <button class="analysis-head" id="birthdeath-toggle" type="button" aria-expanded="false" aria-controls="birthdeath-body">
+          <span class="analysis-title">Birth / death</span>
+          <output id="bd-value"></output>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="analysis-body" id="birthdeath-body" hidden>
+          <label class="switch-row">
+            <input type="checkbox" id="bd-enabled" />
+            <span class="switch" aria-hidden="true"></span>
+            <span>Births and deaths</span>
+          </label>
+          <div class="bd-rates">
+            <div class="field obs-field" id="bd-birth-field">
+              <label class="field-head" for="bd-birth"><span>Birth rate λ</span></label>
+              <input type="text" id="bd-birth" inputmode="decimal" spellcheck="false" autocomplete="off" aria-describedby="bd-birth-error" />
+              <div class="obs-error" id="bd-birth-error" role="alert" hidden></div>
+            </div>
+            <div class="field obs-field" id="bd-death-field">
+              <label class="field-head" for="bd-death"><span>Death rate μ</span></label>
+              <input type="text" id="bd-death" inputmode="decimal" spellcheck="false" autocomplete="off" aria-describedby="bd-death-error" />
+              <div class="obs-error" id="bd-death-error" role="alert" hidden></div>
+            </div>
+          </div>
+          <div class="field-note">Per particle and unit of simulated time. A birth adds a particle at the parent's position, a death removes the particle.</div>
+          <div class="kl-caption">Number of particles over simulated time</div>
+          <canvas id="bd-plot" class="ts-plot" aria-label="Number of particles over time"></canvas>
+          <div class="kl-legend">
+            <span><i class="lg-line"></i>particles N(t)</span>
+            <span><i class="lg-dash"></i>expected N₀ e<sup>(λ−μ)t</sup></span>
+          </div>
+          <div class="kl-info" id="bd-info"></div>
+          <div class="kl-actions single">
+            <button class="ghost-btn" id="bd-reset" type="button">Reset plot</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Custom observable: E[f(X_t)] against the Gibbs expectation -->
       <section class="analysis card collapsed" id="observable" aria-label="Custom observable">
         <button class="analysis-head" id="observable-toggle" type="button" aria-expanded="false" aria-controls="observable-body">
@@ -522,6 +561,14 @@
               <li><b>Painted</b> (default): brush, presets, images and the camera, on a lattice with |Ψ| ≤ 5</li>
               <li><b>Formula</b> (Potential window): type Ψ(t, x, y) in LaTeX, e.g. <code>\frac{x^2+y^2}{2}</code>; the gradient is derived exactly, with no lattice and no cap</li>
               <li>Ψ may use <i>x</i>, <i>y</i>, <i>r</i>, θ, time <i>t</i> and σ; click an example to try it</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Birth / death</h3>
+            <ul>
+              <li>Every particle has two exponential clocks: births at rate λ, death at rate μ</li>
+              <li>A birth adds a particle at the parent's position (same colour), a death removes it</li>
+              <li>The plot compares N(t) with its expectation N₀e<sup>(λ−μ)t</sup>; recordings store every birth and death</li>
             </ul>
           </section>
           <section>

@@ -12,9 +12,9 @@ export interface FormulaInputHooks {
 }
 
 /**
- * A LaTeX formula input as used by the observable and potential windows, found inside `root`:
- * an `<input>`, an error line (`.obs-error`), a rendered preview (`.obs-preview`) and example
- * buttons (`.obs-examples button[data-tex]`).
+ * A validated text input as used by the observable, potential and birth/death windows, found
+ * inside `root`: an `<input>`, an error line (`.obs-error`), and optionally a rendered preview
+ * (`.obs-preview`) and example buttons (`.obs-examples button[data-tex]`).
  *
  * The input is checked shortly after typing stops, on Enter and when it loses focus. An invalid
  * formula gets a red outline and a message under the input, while the last valid formula stays
@@ -24,7 +24,7 @@ export interface FormulaInputHooks {
 export class FormulaInput {
   readonly input: HTMLInputElement;
   private readonly error: HTMLElement;
-  private readonly preview: HTMLElement;
+  private readonly preview: HTMLElement | null;
   private timer = 0;
   /** The formula in use ('' before the first one). */
   applied = '';
@@ -40,7 +40,7 @@ export class FormulaInput {
   ) {
     this.input = must(root.querySelector<HTMLInputElement>('input[type="text"]'));
     this.error = must(root.querySelector<HTMLElement>('.obs-error'));
-    this.preview = must(root.querySelector<HTMLElement>('.obs-preview'));
+    this.preview = root.querySelector<HTMLElement>('.obs-preview');
     this.input.addEventListener('input', () => {
       window.clearTimeout(this.timer);
       this.timer = window.setTimeout(() => this.commit(), PARSE_DELAY_MS);
@@ -66,10 +66,18 @@ export class FormulaInput {
     }
   }
 
-  /** The parser has loaded: start using the formula in the input. */
-  setReady(): void {
+  /**
+   * The parser has loaded: start using the formula in the input, or `initial` (then without
+   * reporting it as entered by the user).
+   */
+  setReady(initial?: string): void {
     this.ready = true;
-    this.commit();
+    if (initial === undefined) {
+      this.commit();
+      return;
+    }
+    this.input.value = initial;
+    this.use(initial);
   }
 
   /** Loads KaTeX for the preview (once). */
@@ -121,11 +129,11 @@ export class FormulaInput {
     this.error.hidden = message === null;
     this.error.textContent = message ?? '';
     // The preview keeps showing the formula in use, dimmed while the input differs from it.
-    this.preview.classList.toggle('stale', message !== null);
+    this.preview?.classList.toggle('stale', message !== null);
   }
 
   private renderPreview(): void {
-    if (!this.katex || !this.applied) return;
+    if (!this.katex || !this.applied || !this.preview) return;
     this.katex.renderTex(this.preview, `${this.previewPrefix}${this.applied}`);
   }
 }

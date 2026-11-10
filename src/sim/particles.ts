@@ -29,6 +29,12 @@ export interface ParticleRecord {
   color: number;
 }
 
+/** Something that happens to the ensemble after every integrator step (e.g. births and deaths). */
+export interface StepEvents {
+  /** Called after each step; `t` is the simulated time at its end. */
+  afterStep(ps: ParticleSystem, t: number): void;
+}
+
 /** A change of the particle set: who was added and who was removed (see beginEdit). */
 export interface ParticleEdit {
   added: ParticleRecord[];
@@ -56,6 +62,14 @@ export class ParticleSystem {
   readonly id = new Uint32Array(MAX_PARTICLES);
   /** Id that the next added particle receives. */
   nextId = 0;
+  /**
+   * Per-particle event clocks (simulated times of the next birth and death, see birthDeath.ts);
+   * NaN = not scheduled. They move with their particle when indices change.
+   */
+  readonly birthAt = new Float64Array(MAX_PARTICLES).fill(Number.NaN);
+  readonly deathAt = new Float64Array(MAX_PARTICLES).fill(Number.NaN);
+  /** Called after every step of `advance` (births and deaths); null = nothing. */
+  events: StepEvents | null = null;
   /** Ring buffers of past positions, TRAIL_LEN (x, y) slots per particle. */
   readonly trail = new Float32Array(MAX_PARTICLES * TRAIL_LEN * 2);
   /** Number of valid trail slots per particle. */
@@ -105,6 +119,8 @@ export class ParticleSystem {
     this.color[i] = color;
     this.id[i] = this.nextId++;
     this.trailCount[i] = 0;
+    this.birthAt[i] = Number.NaN;
+    this.deathAt[i] = Number.NaN;
     this.version++;
     this.editLog?.added.set(this.id[i], { id: this.id[i], x, y, color });
     return true;
@@ -121,6 +137,8 @@ export class ParticleSystem {
       this.color[i] = this.color[last];
       this.id[i] = this.id[last];
       this.trailCount[i] = this.trailCount[last];
+      this.birthAt[i] = this.birthAt[last];
+      this.deathAt[i] = this.deathAt[last];
       const n = TRAIL_LEN * 2;
       this.trail.copyWithin(i * n, last * n, last * n + n);
       this.trailLayout++;
@@ -149,6 +167,8 @@ export class ParticleSystem {
       this.id[i] = p.ids[i];
       if (p.ids[i] > maxId) maxId = p.ids[i];
     }
+    this.birthAt.fill(Number.NaN, 0, n); // clocks start afresh (exponential clocks are memoryless)
+    this.deathAt.fill(Number.NaN, 0, n);
     this.count = n;
     this.nextId = Math.max(this.nextId, maxId + 1);
     if (same) {
@@ -197,6 +217,20 @@ export class ParticleSystem {
     return { added: [...log.added.values()], removed: [...log.removed.values()] };
   }
 
+  /**
+   * Runs `change` without recording it in an open edit: for changes that are part of the
+   * simulation (births, deaths), which undo must not revert.
+   */
+  untracked<T>(change: () => T): T {
+    const log = this.editLog;
+    this.editLog = null;
+    try {
+      return change();
+    } finally {
+      this.editLog = log;
+    }
+  }
+
   /** Removes every particle whose id is in `ids` (ids that are not present are ignored). */
   removeIds(ids: ReadonlySet<number>): void {
     if (ids.size === 0) return;
@@ -221,6 +255,8 @@ export class ParticleSystem {
       this.color[i] = r.color;
       this.id[i] = r.id;
       this.trailCount[i] = 0;
+      this.birthAt[i] = Number.NaN;
+      this.deathAt[i] = Number.NaN;
       if (r.id >= this.nextId) this.nextId = r.id + 1;
       present.add(r.id);
       added++;
@@ -274,6 +310,7 @@ export class ParticleSystem {
     const t0 = this.time;
     for (let s = 0; s < n; s++) {
       this.stepAt(field, dt, sigma, t0 + s * dt);
+      this.events?.afterStep(this, t0 + (s + 1) * dt);
       this.trailClock += dt;
       if (this.trailClock >= TRAIL_DT - 1e-12) {
         this.trailClock -= TRAIL_DT;

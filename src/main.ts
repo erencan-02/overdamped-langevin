@@ -17,6 +17,8 @@ import { EquilibriumMonitor } from './analysis/equilibrium';
 import { ObservableMonitor } from './analysis/observable';
 import { ObservablePanel } from './ui/observablePanel';
 import { PotentialPanel } from './ui/potentialPanel';
+import { BirthDeath } from './sim/birthDeath';
+import { BirthDeathPanel } from './ui/birthDeathPanel';
 import { Potential } from './sim/potential';
 import { Recorder } from './record/recorder';
 import { ImageDropHandler, ImageImporter } from './image/importer';
@@ -239,6 +241,9 @@ function main(): void {
       seed: state.seed,
       playing: state.playing,
       potentialTex: state.potentialMode === 'formula' ? state.potentialTex : null,
+      birthDeath: state.birthDeath,
+      birthRate: state.birthRate,
+      deathRate: state.deathRate,
     }),
     // Full settings for the metadata, so a recording restores the whole configuration.
     settings: () => session.capture(['physics', 'analysis', 'display', 'tools', 'analysisBox', 'view']),
@@ -297,7 +302,21 @@ function main(): void {
     return renderer.setFormula({ glsl: f.glsl, exact: (xs, ys, n, t, sigma, out) => f.value(xs, ys, n, t, sigma, out) });
   };
 
+  // Births and deaths: exponential clocks per particle, run after every integrator step. They
+  // draw from their own random stream, and recordings get every event (the lineage).
+  const birthDeath = new BirthDeath(random.get('births'), {
+    birth: (t, parent, child) => recorder.addBirth(t, parent, child),
+    death: (t, id) => recorder.addDeath(t, id),
+  });
+  particles.events = birthDeath;
+  const birthDeathPanel = new BirthDeathPanel(birthDeath, particles, {
+    settings: () => ({ enabled: state.birthDeath, birthRate: state.birthRate, deathRate: state.deathRate }),
+    set: (change) => session.apply({ physics: change }),
+  });
+
   const syncUi = () => {
+    birthDeath.configure(state.birthDeath, state.birthRate, state.deathRate);
+    birthDeathPanel.sync();
     controls.sync();
     observablePanel.sync(); // e.g. the test function of a restored recording
     potentialPanel.sync(); // e.g. the potential of a restored recording
@@ -642,6 +661,8 @@ function main(): void {
       }
     }
 
+    birthDeathPanel.update(now);
+
     // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
     potential.setTime(particles.time, state.sigma);
     // Only a formula drawn from the CPU needs the display lattice (redrawn when the view moves).
@@ -735,6 +756,7 @@ function main(): void {
       monitor,
       observables,
       potential,
+      birthDeath,
       viewSwitch,
       input,
       recorder,

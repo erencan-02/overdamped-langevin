@@ -28,6 +28,10 @@ export interface RecordedParams {
   playing: boolean;
   /** Ψ from a formula (LaTeX), or undefined/null if Ψ is the painted lattice. */
   potentialTex?: string | null;
+  /** Births and deaths: on/off and the rates λ, μ. */
+  birthDeath?: boolean;
+  birthRate?: number;
+  deathRate?: number;
 }
 
 /** Format name in the metadata of recordings (files made before the app was renamed say 'potential-sde-run'). */
@@ -79,6 +83,16 @@ export class Run {
   /** Per frame: index into `potentialExpressions` of the formula Ψ, or −1 for the painted lattice. */
   readonly potentialExpr: number[] = [];
   readonly potentialExpressions: string[] = [];
+  /** Per frame: births and deaths on (1) or off (0), and the rates λ, μ. */
+  readonly birthDeath: number[] = [];
+  readonly birthRate: number[] = [];
+  readonly deathRate: number[] = [];
+  /** Every birth (time, parent id, child id) and death (time, id) during the run: the lineage. */
+  readonly birthT: number[] = [];
+  readonly birthParent: number[] = [];
+  readonly birthChild: number[] = [];
+  readonly deathT: number[] = [];
+  readonly deathId: number[] = [];
 
   // Ψ snapshots.
   readonly psiGrid: PsiGrid;
@@ -188,6 +202,14 @@ export class Run {
       playing: u1(this.playing),
       seed: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.seed) },
       potential_expr: { dtype: '<i4', shape: [F], data: Int32Array.from(this.potentialExpr) },
+      birth_death: u1(this.birthDeath),
+      birth_rate: f8(this.birthRate),
+      death_rate: f8(this.deathRate),
+      birth_t: f8(this.birthT),
+      birth_parent: { dtype: '<u4', shape: [this.birthT.length], data: Uint32Array.from(this.birthParent) },
+      birth_child: { dtype: '<u4', shape: [this.birthT.length], data: Uint32Array.from(this.birthChild) },
+      death_t: f8(this.deathT),
+      death_id: { dtype: '<u4', shape: [this.deathT.length], data: Uint32Array.from(this.deathId) },
       rng_state: { dtype: '<u4', shape: [F, 4], data: concatU32(this.rngState) },
       clock_remainder: f8(this.clockRemainder),
       next_id: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.nextId) },
@@ -251,6 +273,14 @@ export class Run {
         scheme: '0 = stochastic Heun, 1 = Euler-Maruyama, per frame (F)',
         playing: '1 if the simulation was running, per frame (F)',
         seed: 'seed of the random streams, per frame (F)',
+        birth_death: '1 if particles were born and died (exponential clocks), per frame (F)',
+        birth_rate: 'birth rate lambda per particle and unit of time, per frame (F)',
+        death_rate: 'death rate mu per particle and unit of time, per frame (F)',
+        birth_t: 'simulated time of each birth (B)',
+        birth_parent: 'id of the particle that gave birth (B)',
+        birth_child: 'id of the newborn particle, placed at the parent position (B)',
+        death_t: 'simulated time of each death (D)',
+        death_id: 'id of the particle that died (D)',
         potential_expr:
           'index into metadata.potential_expressions (LaTeX of Psi(t, x, y)) per frame, or -1 if Psi is the painted lattice in `psi` (F)',
         rng_state: "state of the 'dynamics' xoshiro128** stream after each frame (F x 4)",
@@ -352,7 +382,7 @@ export class Recorder {
     // A Ψ snapshot always comes with a frame, so that it can be tied to an exact frame index.
     const pKey = `${field.revision}|${field.epoch}`;
     const psiDue = pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS);
-    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}`;
+    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}|${p.birthDeath}|${p.birthRate}|${p.deathRate}`;
     if (force || psiDue || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
@@ -367,6 +397,9 @@ export class Recorder {
       run.clockRemainder.push(ps.clockRemainder);
       run.nextId.push(ps.nextId);
       run.seed.push(p.seed);
+      run.birthDeath.push(p.birthDeath ? 1 : 0);
+      run.birthRate.push(p.birthRate ?? 0);
+      run.deathRate.push(p.deathRate ?? 0);
       if (p.potentialTex) {
         let e = run.potentialExpressions.indexOf(p.potentialTex);
         if (e < 0) e = run.potentialExpressions.push(p.potentialTex) - 1;
@@ -417,6 +450,25 @@ export class Recorder {
     run.klInside.push(s.inside);
     run.klBox.push(box.x0, box.y0, box.x1, box.y1);
     run.bytes += 56;
+  }
+
+  /** Records a birth (the lineage of the run). */
+  addBirth(t: number, parent: number, child: number): void {
+    const run = this.current;
+    if (!run) return;
+    run.birthT.push(t);
+    run.birthParent.push(parent);
+    run.birthChild.push(child);
+    run.bytes += 16;
+  }
+
+  /** Records a death. */
+  addDeath(t: number, id: number): void {
+    const run = this.current;
+    if (!run) return;
+    run.deathT.push(t);
+    run.deathId.push(id);
+    run.bytes += 12;
   }
 
   /** Adds an observable estimate (for the test function `tex`) to the current run. */
