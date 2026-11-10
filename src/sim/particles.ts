@@ -36,6 +36,13 @@ export class ParticleSystem {
   readonly y = new Float64Array(MAX_PARTICLES);
   /** Palette index of each particle. */
   readonly color = new Uint8Array(MAX_PARTICLES);
+  /**
+   * Stable identity of each particle. Indices change when particles are removed (the last one
+   * moves into the gap), ids never do, so recordings can follow every particle through a run.
+   */
+  readonly id = new Uint32Array(MAX_PARTICLES);
+  /** Id that the next added particle receives. */
+  nextId = 0;
   /** Ring buffers of past positions, TRAIL_LEN (x, y) slots per particle. */
   readonly trail = new Float32Array(MAX_PARTICLES * TRAIL_LEN * 2);
   /** Number of valid trail slots per particle. */
@@ -78,6 +85,7 @@ export class ParticleSystem {
     this.x[i] = x;
     this.y[i] = y;
     this.color[i] = color;
+    this.id[i] = this.nextId++;
     this.trailCount[i] = 0;
     this.version++;
     return true;
@@ -91,6 +99,7 @@ export class ParticleSystem {
       this.x[i] = this.x[last];
       this.y[i] = this.y[last];
       this.color[i] = this.color[last];
+      this.id[i] = this.id[last];
       this.trailCount[i] = this.trailCount[last];
       const n = TRAIL_LEN * 2;
       this.trail.copyWithin(i * n, last * n, last * n + n);
