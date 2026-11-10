@@ -1,6 +1,6 @@
 import type { PotentialField } from '../sim/field';
 import type { ParticleSystem } from '../sim/particles';
-import type { CameraPose, Rect, Scene3DView } from './types';
+import type { CameraPose, Cursor3D, Rect, Scene3DView, WorldPick } from './types';
 
 export type ViewMode = '2d' | '3d';
 
@@ -53,7 +53,7 @@ interface Transition {
 }
 
 /**
- * Switches between the 2D view and the read-only 3D view, with a smooth transition: going to
+ * Switches between the 2D view and the 3D view, with a smooth transition: going to
  * 3D, the 3D canvas fades in while it still shows the flat scene from straight above (it then
  * looks exactly like the 2D view), and the camera tilts while Ψ rises into a relief. Going back
  * runs the same flight in reverse, from wherever the user has moved the 3D camera, and the 2D
@@ -90,6 +90,20 @@ export class ViewSwitch {
   /** The 2D view takes mouse input: only in 2D with no transition running. */
   get interactive2D(): boolean {
     return this.mode === '2d' && this.transition === null && this.opacity === 0;
+  }
+
+  /** The 3D view takes mouse input: fully in 3D, no transition running. */
+  get interactive3D(): boolean {
+    return this.mode === '3d' && this.transition === null && this.opacity >= 1 && this.scene !== null;
+  }
+
+  /** The surface point under a stage point (only meaningful while interactive3D). */
+  pick(sx: number, sy: number): WorldPick | null {
+    return this.scene?.pick(sx, sy) ?? null;
+  }
+
+  setCursor(c: Cursor3D | null): void {
+    this.scene?.setCursor(c);
   }
 
   toggle(): void {
@@ -159,6 +173,7 @@ export class ViewSwitch {
       return;
     }
     scene.setControlsEnabled(false);
+    scene.setCursor(null);
     // Back to straight above the 2D view, which has not moved while in 3D.
     this.begin('2d', scene.getPose(), scene.homePose(this.hooks.view2D()), 0);
   }

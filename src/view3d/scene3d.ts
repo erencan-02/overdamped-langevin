@@ -1,7 +1,10 @@
 /**
  * 3D view of the simulation, built with three.js: Ψ as a height field coloured with the app's
  * colour map (with the 2D grid lines and iso-lines on it), and the particles as spheres resting
- * on it at height Ψ(x, y). The camera orbits with the mouse (OrbitControls).
+ * on it at height Ψ(x, y). The tools work here as in 2D (the input controller asks `pick` where
+ * the mouse points on the surface); the camera orbits with the middle mouse button or Alt +
+ * left-drag, pans with Shift + middle, zooms with the wheel, and orbits with one finger on touch
+ * screens (OrbitControls).
  *
  * World coordinates are the app's: x and y in the plane, z up (height = Ψ · heightScale).
  * At relief 0 and a camera straight above the view centre, the picture matches the 2D view
@@ -22,14 +25,18 @@ import {
   DynamicDrawUsage,
   InstancedMesh,
   LineBasicMaterial,
+  LineDashedMaterial,
   LineLoop,
   LineSegments,
   Matrix4,
   Mesh,
   MeshLambertMaterial,
+  MOUSE,
   PerspectiveCamera,
+  Raycaster,
   Scene,
   SphereGeometry,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -39,7 +46,7 @@ import type { PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import { gridSpacing } from '../view/gridSpacing';
 import { HeightField } from './heightField';
-import type { CameraPose, Rect, Scene3DView } from './types';
+import type { CameraPose, Cursor3D, Rect, Scene3DView, WorldPick } from './types';
 
 /** Vertical field of view of the 3D camera (degrees). */
 const FOV = 40;
@@ -66,6 +73,14 @@ const MAJOR_ALPHA = 0.13;
 const AXIS_ALPHA = 0.42;
 /** More grid lines than this per direction and the minor ones are left out. */
 const MAX_MINOR_LINES = 160;
+/** Brush cursor colours, as in 2D (overlay.ts): raising, lowering, idle. */
+const RAISE = 0xea580c;
+const LOWER = 0x2563eb;
+const IDLE = 0x334155;
+/** Points per cursor ring. */
+const RING_POINTS = 96;
+/** Ray marching steps across the surface's box when picking (then refined by bisection). */
+const PICK_STEPS = 400;
 
 export class Scene3D implements Scene3DView {
   readonly canvas: HTMLCanvasElement;
@@ -83,6 +98,10 @@ export class Scene3D implements Scene3DView {
   private readonly dots: InstancedMesh;
   private readonly palette = PALETTE.map((hex) => new Color(hex));
   private readonly m = new Matrix4();
+  /** Cursor: 1σ ring (solid) and 2σ ring (dashed) of the brush, or the next particle's ring. */
+  private readonly rings: [LineLoop, LineLoop];
+  private readonly raycaster = new Raycaster();
+  private readonly ndc = new Vector2();
 
   private region: Rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
   /** World height per unit of Ψ (at full relief). */
@@ -107,6 +126,16 @@ export class Scene3D implements Scene3DView {
     this.controls.maxPolarAngle = (86 * Math.PI) / 180; // never below the ground
     this.controls.screenSpacePanning = false; // pan along the ground
     this.controls.enabled = false;
+    // Left and right belong to the tools: orbit with the middle button (Shift + middle pans,
+    // built into OrbitControls) or with Alt + left for trackpads; one finger orbits on touch.
+    this.controls.mouseButtons = { LEFT: null, MIDDLE: MOUSE.ROTATE, RIGHT: null };
+    this.canvas.addEventListener(
+      'pointerdown',
+      (e) => {
+        this.controls.mouseButtons.LEFT = e.altKey ? MOUSE.ROTATE : null;
+      },
+      { capture: true }, // before OrbitControls reads it
+    );
 
     this.scene.add(new AmbientLight(0xffffff, AMBIENT_PART * Math.PI));
     const sun = new DirectionalLight(0xffffff, SUN_PART * Math.PI);
@@ -142,6 +171,26 @@ export class Scene3D implements Scene3DView {
       this.surface.add(lines);
       return lines;
     });
+
+    const solid = new LineBasicMaterial({ color: IDLE, depthTest: false, transparent: true });
+    const dashed = new LineDashedMaterial({
+      color: IDLE,
+      dashSize: 1,
+      gapSize: 1,
+      opacity: 0.6,
+      transparent: true,
+      depthTest: false,
+    });
+    this.height.apply(solid, { shade: false, colour: false });
+    this.height.apply(dashed, { shade: false, colour: false });
+    this.rings = [new LineLoop(new BufferGeometry(), solid), new LineLoop(new BufferGeometry(), dashed)];
+    for (const ring of this.rings) {
+      ring.geometry.setAttribute('position', new BufferAttribute(new Float32Array(RING_POINTS * 3), 3));
+      ring.frustumCulled = false;
+      ring.renderOrder = 10; // drawn last, on top of everything
+      ring.visible = false;
+      this.surface.add(ring);
+    }
 
     this.dots = new InstancedMesh(new SphereGeometry(1, 20, 14), new MeshLambertMaterial(), MAX_PARTICLES);
     this.dots.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -228,6 +277,76 @@ export class Scene3D implements Scene3DView {
   /** Shows or hides the iso-lines of Ψ (the Contours toggle). */
   setContours(on: boolean): void {
     this.height.setContours(on);
+  }
+
+  /**
+   * The point of the surface (as drawn: Ψ at the current relief) under the stage point (sx, sy),
+   * found by marching along the camera ray through the surface's bounding box and refining the
+   * first crossing by bisection. Null if the ray misses the surface.
+   */
+  pick(sx: number, sy: number): WorldPick | null {
+    this.ndc.set((sx / this.cssWidth) * 2 - 1, 1 - (sy / this.cssHeight) * 2);
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+    const o = this.raycaster.ray.origin;
+    const d = this.raycaster.ray.direction;
+    const lift = this.heightScale * Math.max(1e-4, this.relief);
+    const zMax = this.field.cap * lift * 1.01 + 1e-6;
+    const { x0, y0, x1, y1 } = this.region;
+    // Slab test against the box [x0, x1] × [y0, y1] × [−zMax, zMax].
+    let t0 = 0;
+    let t1 = Infinity;
+    const slab = (oc: number, dc: number, lo: number, hi: number): boolean => {
+      if (Math.abs(dc) < 1e-12) return oc >= lo && oc <= hi;
+      let a = (lo - oc) / dc;
+      let b = (hi - oc) / dc;
+      if (a > b) [a, b] = [b, a];
+      t0 = Math.max(t0, a);
+      t1 = Math.min(t1, b);
+      return t0 <= t1;
+    };
+    if (!slab(o.x, d.x, x0, x1) || !slab(o.y, d.y, y0, y1) || !slab(o.z, d.z, -zMax, zMax)) return null;
+    // Height of the ray above the surface at parameter t.
+    const above = (t: number) => o.z + t * d.z - this.field.sample(o.x + t * d.x, o.y + t * d.y) * lift;
+    let prevT = t0;
+    if (above(prevT) <= 0) return this.hit(prevT); // starts below: the entry point is on the surface
+    const dt = (t1 - t0) / PICK_STEPS;
+    for (let k = 1; k <= PICK_STEPS; k++) {
+      const t = t0 + k * dt;
+      if (above(t) <= 0) {
+        let lo = prevT;
+        let hi = t;
+        for (let n = 0; n < 30; n++) {
+          const mid = (lo + hi) / 2;
+          if (above(mid) > 0) lo = mid;
+          else hi = mid;
+        }
+        return this.hit(hi);
+      }
+      prevT = t;
+    }
+    return null;
+  }
+
+  /** Shows the brush rings or the next particle's ring on the surface (null hides them). */
+  setCursor(c: Cursor3D | null): void {
+    const [solid, dashed] = this.rings;
+    if (!c) {
+      solid.visible = dashed.visible = false;
+      return;
+    }
+    if (c.kind === 'brush') {
+      const color = c.sign > 0 ? RAISE : c.sign < 0 ? LOWER : IDLE;
+      this.placeRing(solid, c.x, c.y, c.radius, color);
+      this.placeRing(dashed, c.x, c.y, 2 * c.radius, color);
+      // Dashes of about 3 + 4 px, as in 2D, measured at the cursor.
+      const mat = dashed.material as LineDashedMaterial;
+      mat.dashSize = 3 * c.perPx;
+      mat.gapSize = 4 * c.perPx;
+      dashed.computeLineDistances();
+    } else {
+      this.placeRing(solid, c.x, c.y, this.particleRadius * 1.25, new Color(c.color).getHex());
+      dashed.visible = false;
+    }
   }
 
   setControlsEnabled(on: boolean): void {
@@ -339,6 +458,28 @@ export class Scene3D implements Scene3DView {
       g.dispose();
       g.setAttribute('position', new BufferAttribute(out, 3));
     });
+  }
+
+  private hit(t: number): WorldPick {
+    const p = this.raycaster.ray.at(t, new Vector3());
+    const distance = p.distanceTo(this.camera.position);
+    const perPx = (2 * distance * Math.tan(((FOV / 2) * Math.PI) / 180)) / this.cssHeight;
+    return { x: p.x, y: p.y, perPx };
+  }
+
+  /** A circle of radius r around (x, y), lying on the surface (lifted by the shader). */
+  private placeRing(ring: LineLoop, x: number, y: number, r: number, color: number): void {
+    const pos = ring.geometry.getAttribute('position') as BufferAttribute;
+    const a = pos.array as Float32Array;
+    for (let k = 0; k < RING_POINTS; k++) {
+      const phi = (k / RING_POINTS) * Math.PI * 2;
+      a[3 * k] = x + r * Math.cos(phi);
+      a[3 * k + 1] = y + r * Math.sin(phi);
+      a[3 * k + 2] = 0;
+    }
+    pos.needsUpdate = true;
+    (ring.material as LineBasicMaterial).color.setHex(color);
+    ring.visible = true;
   }
 
   // ---------------------------------------------------------------- particles

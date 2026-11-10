@@ -67,13 +67,14 @@ button {
 #overlay {
   pointer-events: none;
 }
-/* The read-only 3D view (three.js canvas) lies over the 2D canvases while it is shown. */
+/* The 3D view (three.js canvas) lies over the 2D canvases while it is shown. Its cursor is
+   drawn on the surface in brush mode, as in 2D. */
 .stage canvas.view3d {
-  cursor: grab;
+  cursor: none;
   touch-action: none;
 }
-.stage canvas.view3d:active {
-  cursor: grabbing;
+.stage[data-mode='particles'] canvas.view3d {
+  cursor: crosshair;
 }
 .stage canvas.view3d[hidden] {
   display: none;
@@ -198,14 +199,6 @@ svg .fill {
 .seg-view .seg-btn {
   padding: 0 9px;
   font-variant-numeric: tabular-nums;
-}
-/* In 3D the scene is read-only: the brush/particle tools do not apply. */
-.seg.disabled .seg-btn {
-  cursor: default;
-  opacity: 0.45;
-}
-.seg.disabled .seg-thumb {
-  opacity: 0.5;
 }
 /* Only animate mode switches, not the initial placement. */
 .seg.animate .seg-thumb {
