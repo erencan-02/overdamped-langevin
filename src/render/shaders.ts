@@ -199,6 +199,7 @@ precision highp float;
 uniform float u_radius;   // device px
 uniform float u_ring;     // device px
 uniform float u_halo;     // device px
+uniform float u_opacity;  // 1, or lower while the smoothed density is shown
 in vec2 v_px;
 in vec3 v_color;
 out vec4 o_color;
@@ -216,7 +217,7 @@ void main() {
   // body over the dark outline/halo (premultiplied, the shadow is black)
   vec3 rgb = body * bodyA;
   float a = bodyA + shadowA * (1.0 - bodyA);
-  o_color = vec4(rgb, a);
+  o_color = vec4(rgb, a) * u_opacity;
 }`;
 
 // ------------------------------------------------------------------ force field (−∇Ψ arrows)
@@ -290,4 +291,41 @@ void main() {
   vec3 rgb = ink * ca + vec3(1.0) * ha * (1.0 - ca);
   float a = ca + ha * (1.0 - ca);
   o_color = vec4(rgb, a);
+}`;
+
+// ------------------------------------------------------------------ smoothed empirical measure
+
+export const DENSITY_VS = /* glsl */ `#version 300 es
+in vec2 a_pos;            // unit quad corner in [0,1]^2
+uniform vec4 u_rect;      // grid rectangle relative to the camera centre (x0, y0, x1, y1)
+${VIEW}
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos;           // cell-centred texture: linear filtering interpolates between cell centres
+  gl_Position = vec4(worldToClip(mix(u_rect.xy, u_rect.zw, a_pos)), 0.0, 1.0);
+}`;
+
+export const DENSITY_FS = /* glsl */ `#version 300 es
+precision highp float;
+uniform sampler2D u_tex;  // density / max density in [0, 1]
+in vec2 v_uv;
+out vec4 o_color;
+// Hot pink (hue ≈ 330°): distinct from both the red end (≈ 5°) and the purple end (≈ 265°) of
+// the potential's colour map. A light fill shows the shape; bold iso-density lines carry the
+// levels and stay readable on top of any colour of Ψ.
+const vec3 FILL0 = vec3(0.984, 0.812, 0.910);  // #fbcfe8
+const vec3 FILL1 = vec3(0.925, 0.282, 0.600);  // #ec4899
+const vec3 LINE = vec3(0.745, 0.094, 0.365);   // #be185d
+void main() {
+  float d = clamp(texture(u_tex, v_uv).r, 0.0, 1.0);
+  vec3 c = mix(FILL0, FILL1, d);
+  float a = 0.42 * pow(d, 0.6);
+  // Iso-density lines at 20 %, 40 %, 60 %, 80 % of the maximum, about 2 px wide.
+  float lv = d * 5.0;
+  float fw = max(fwidth(lv), 1e-6);
+  float dist = abs(fract(lv + 0.5) - 0.5) / fw;
+  float line = (1.0 - smoothstep(0.9, 1.9, dist)) * step(0.5, lv) * step(lv, 4.5);
+  c = mix(c, LINE, line);
+  a = mix(a, 0.95, line);
+  o_color = vec4(c * a, a);
 }`;

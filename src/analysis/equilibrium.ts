@@ -39,8 +39,25 @@ export interface EquilibriumSample {
  * cloud-in-cell deposit, one separable blur and one pass for the KL sum, and is taken at most
  * every 100 ms of real time, and only while the monitor is enabled.
  */
+/** The smoothed empirical measure on its grid, for drawing. */
+export interface DensityImage {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  nx: number;
+  ny: number;
+  /** Cell probabilities p_c (row 0 at y0), valid until the next update. */
+  values: Float32Array;
+  /** Incremented on every new estimate. */
+  version: number;
+}
+
 export class EquilibriumMonitor {
+  /** The KL window is open. */
   enabled = true;
+  /** Keep estimating even while the window is closed (recording, density shown). */
+  keepRunning = false;
   box: Box | null = null;
   readonly times: number[] = [];
   readonly values: number[] = [];
@@ -55,11 +72,34 @@ export class EquilibriumMonitor {
   private mass = new Float32Array(0);
   private lastRun = -Infinity;
   private lastInputs = '';
+  private densityValid = false;
+  private densityVersion = 0;
 
   constructor(
     private readonly field: PotentialField,
     private readonly particles: ParticleSystem,
   ) {}
+
+  /** Whether estimates are being taken. */
+  get active(): boolean {
+    return this.enabled || this.keepRunning;
+  }
+
+  /** The latest smoothed empirical measure, or null if there is none. */
+  get density(): DensityImage | null {
+    const g = this.grid;
+    if (!g || !this.densityValid) return null;
+    return {
+      x0: g.x0,
+      y0: g.y0,
+      x1: g.x0 + g.nx * g.cell,
+      y1: g.y0 + g.ny * g.cell,
+      nx: g.nx,
+      ny: g.ny,
+      values: this.mass,
+      version: this.densityVersion,
+    };
+  }
 
   setBox(box: Box): void {
     this.box = { ...box };
@@ -83,9 +123,9 @@ export class EquilibriumMonitor {
    * Takes a new estimate if enough real time has passed and something changed. Returns true
    * when a new sample was produced (so the plot needs redrawing).
    */
-  update(nowMs: number, sigma: number, kernelVariance: number): boolean {
-    if (!this.enabled || !this.box) return false;
-    if (nowMs - this.lastRun < INTERVAL_MS) return false;
+  update(nowMs: number, sigma: number, kernelVariance: number, intervalMs = INTERVAL_MS): boolean {
+    if (!this.active || !this.box) return false;
+    if (nowMs - this.lastRun < intervalMs) return false;
     const field = this.field;
     const ps = this.particles;
     const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${kernelVariance}`;
@@ -102,7 +142,9 @@ export class EquilibriumMonitor {
     const mass = this.mass;
     const inside = depositParticles(grid, ps.x, ps.y, ps.count, mass);
     let kl = NaN;
-    if (logQ && inside > 0 && smoothAndNormalise(grid, mass, h)) kl = klDivergence(mass, logQ, n);
+    this.densityValid = inside > 0 && smoothAndNormalise(grid, mass, h);
+    this.densityVersion++;
+    if (logQ && this.densityValid) kl = klDivergence(mass, logQ, n);
     const floor = logQ ? this.ensureFloor(grid, logQ, h) : NaN;
 
     this.latest = { kl, floor, inside, total: ps.count, kernelCells: h / grid.cell, h };

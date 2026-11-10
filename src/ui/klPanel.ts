@@ -44,7 +44,8 @@ export class KlPanel {
     this.body.hidden = !open;
     this.section.classList.toggle('collapsed', !open);
     if (open) {
-      this.monitor.reset(); // the curve was not tracked while closed
+      // The curve was not tracked while closed (unless something kept the monitor running).
+      if (!this.monitor.keepRunning) this.monitor.reset();
       this.draw();
     } else {
       this.value.textContent = '';

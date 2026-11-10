@@ -5,9 +5,12 @@ import type { Camera } from '../view/camera';
 import { ARROW_FLOATS, arrowSpacing, buildArrows } from '../view/forceField';
 import { gridSpacing } from '../view/gridSpacing';
 import { createBuffer, createProgram, type Program } from './gl';
+import type { DensityImage } from '../analysis/equilibrium';
 import {
   ARROW_FS,
   ARROW_VS,
+  DENSITY_FS,
+  DENSITY_VS,
   FIELD_FS,
   FIELD_VS,
   FULLSCREEN_VS,
@@ -28,6 +31,8 @@ export interface RenderOptions {
   contours: boolean;
   /** Show the force field −∇Ψ as arrows. */
   forceField: boolean;
+  /** Smoothed empirical measure to draw, or null. */
+  density: DensityImage | null;
 }
 
 /**
@@ -41,6 +46,11 @@ export class Renderer {
   private readonly trailProg: Program;
   private readonly particleProg: Program;
   private readonly arrowProg: Program;
+  private readonly densityProg: Program;
+  private densityTex: WebGLTexture | null = null;
+  private densitySize = '';
+  private densityVersion = -1;
+  private densityScratch = new Float32Array(0);
 
   private readonly fieldVao: WebGLVertexArrayObject;
   private readonly gridVao: WebGLVertexArrayObject;
@@ -92,6 +102,7 @@ export class Renderer {
     this.trailProg = createProgram(gl, TRAIL_VS, TRAIL_FS);
     this.particleProg = createProgram(gl, PARTICLE_VS, PARTICLE_FS);
     this.arrowProg = createProgram(gl, ARROW_VS, ARROW_FS);
+    this.densityProg = createProgram(gl, DENSITY_VS, DENSITY_FS);
 
     // Field: unit quad as a triangle strip.
     this.fieldVao = gl.createVertexArray()!;
@@ -188,13 +199,16 @@ export class Renderer {
 
     gl.enable(gl.BLEND);
     if (opts.grid) this.drawGrid(cam, scale, W, H);
+    if (opts.density) this.drawDensity(cam, opts.density, scale, W, H);
     if (opts.forceField) this.drawArrows(cam, field, scale, W, H);
     this.uploadParticles(ps);
+    // While the smoothed density is shown, particles and trails are faded so it reads through.
+    const fade = opts.density ? 0.35 : 1;
     if (opts.trails && this.particleInstances > 0) {
       this.uploadTrails(ps);
-      this.drawTrails(cam, scale, W, H);
+      this.drawTrails(cam, scale, W, H, fade);
     }
-    if (this.particleInstances > 0) this.drawParticles(cam, scale, W, H);
+    if (this.particleInstances > 0) this.drawParticles(cam, scale, W, H, fade);
     gl.disable(gl.BLEND);
   }
 
@@ -317,6 +331,52 @@ export class Renderer {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  // ---------------------------------------------------------------- smoothed empirical measure
+
+  private drawDensity(cam: Camera, d: DensityImage, scale: number, W: number, H: number): void {
+    const gl = this.gl;
+    const n = d.nx * d.ny;
+    const size = `${d.nx}x${d.ny}`;
+    if (size !== this.densitySize || !this.densityTex) {
+      if (this.densityTex) gl.deleteTexture(this.densityTex);
+      this.densityTex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.densityTex);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R16F, d.nx, d.ny);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.densitySize = size;
+      this.densityVersion = -1;
+    }
+    if (d.version !== this.densityVersion) {
+      // Normalise to the maximum, so half floats keep full precision and the colours use the
+      // whole ramp whatever N, h or the box size are.
+      let max = 0;
+      for (let c = 0; c < n; c++) if (d.values[c] > max) max = d.values[c];
+      if (this.densityScratch.length < n) this.densityScratch = new Float32Array(n);
+      const out = this.densityScratch;
+      const inv = max > 0 ? 1 / max : 0;
+      for (let c = 0; c < n; c++) out[c] = d.values[c] * inv;
+      gl.bindTexture(gl.TEXTURE_2D, this.densityTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, d.nx, d.ny, gl.RED, gl.FLOAT, out, 0);
+      this.densityVersion = d.version;
+    }
+    const p = this.densityProg;
+    gl.useProgram(p.program);
+    gl.bindVertexArray(this.fieldVao); // unit quad
+    gl.uniform2f(p.uniforms.u_res, W, H);
+    gl.uniform1f(p.uniforms.u_scale, scale);
+    gl.uniform2f(p.uniforms.u_center, 0, 0);
+    gl.uniform4f(p.uniforms.u_rect, d.x0 - cam.x, d.y0 - cam.y, d.x1 - cam.x, d.y1 - cam.y);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.densityTex);
+    gl.uniform1i(p.uniforms.u_tex, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
   // ---------------------------------------------------------------- force field
 
   private drawArrows(cam: Camera, field: PotentialField, scale: number, W: number, H: number): void {
@@ -424,7 +484,7 @@ export class Renderer {
     gl.uniform3fv(p.uniforms.u_palette, PALETTE_RGB);
   }
 
-  private drawTrails(cam: Camera, scale: number, W: number, H: number): void {
+  private drawTrails(cam: Camera, scale: number, W: number, H: number, fade: number): void {
     const gl = this.gl;
     const p = this.trailProg;
     gl.useProgram(p.program);
@@ -436,12 +496,12 @@ export class Renderer {
     gl.uniform1i(p.uniforms.u_head, this.headSlot);
     gl.uniform1i(p.uniforms.u_len, TRAIL_LEN);
     gl.uniform1f(p.uniforms.u_width, 2.2 * this.dpr);
-    gl.uniform1f(p.uniforms.u_alpha, 0.6);
+    gl.uniform1f(p.uniforms.u_alpha, 0.6 * fade);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, TRAIL_LEN * 6, this.particleInstances);
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
-  private drawParticles(cam: Camera, scale: number, W: number, H: number): void {
+  private drawParticles(cam: Camera, scale: number, W: number, H: number, fade: number): void {
     const gl = this.gl;
     const p = this.particleProg;
     const dpr = this.dpr;
@@ -455,6 +515,7 @@ export class Renderer {
     gl.uniform1f(p.uniforms.u_ring, ring);
     gl.uniform1f(p.uniforms.u_halo, halo);
     gl.uniform1f(p.uniforms.u_extent, radius + ring + halo + 1);
+    gl.uniform1f(p.uniforms.u_opacity, fade);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.particleInstances);
   }
 }

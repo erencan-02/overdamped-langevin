@@ -95,6 +95,33 @@ times per second while the window is open; π is only recomputed when Ψ, σ or 
 is $\mathrm{KL}(\pi * K_h \,\|\, \pi)$, the value that perfect sampling approaches as $N \to \infty$, so
 the curve should level off at or slightly above it (the excess is the finite-N noise).
 
+**Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
+estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its
+maximum, a hue that appears nowhere in the colour map of Ψ. It uses the same grid as the KL estimate and is
+updated 30 times per second while shown.
+
+**Recording runs.** The record button (<kbd>Shift</kbd>+<kbd>R</kbd>) starts and stops a recording; finished
+runs appear in the *Recordings* panel on the right and download as `.npz` files:
+
+```python
+import json
+import numpy as np
+
+run = np.load("potential-sde-run-1.npz")
+meta = json.loads(str(run["metadata"]))          # constants, start parameters, array docs
+off = run["frame_offsets"]                       # frame k: rows off[k]:off[k+1]
+k = 10
+ids, x, y = (run[a][off[k]:off[k + 1]] for a in ("particle_id", "x", "y"))
+psi = run["psi"]                                 # (snapshots, ny, nx) on psi_grid = [x0, y0, spacing]
+kl_t, kl, floor = run["kl_t"], run["kl"], run["kl_floor"]
+```
+
+A run contains particle positions with stable ids (frames at up to 20 Hz, whenever something
+changed), the simulated and wall-clock time of every frame, σ, speed, kernel variance, scheme and
+play state per frame, snapshots of Ψ on the lattice over the KL box (up to 5 Hz, whenever Ψ
+changed), and the KL time series with its floor, h, particle count and box. Recording stops by
+itself at 400 MB of raw data; runs live in the browser tab until downloaded or deleted.
+
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
 behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,
 even while the simulation is running:

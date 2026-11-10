@@ -17,6 +17,8 @@ export interface ControlActions {
   toggleContours(): void;
   toggleForceField(): void;
   toggleCamera(): void;
+  toggleRecording(): void;
+  toggleDensity(): void;
   clearParticles(): void;
   clearField(): void;
   resetView(): void;
@@ -70,6 +72,8 @@ export class Controls {
     $('toggle-contours').addEventListener('click', () => actions.toggleContours());
     $('toggle-force').addEventListener('click', () => actions.toggleForceField());
     $('toggle-camera').addEventListener('click', () => actions.toggleCamera());
+    $('toggle-record').addEventListener('click', () => actions.toggleRecording());
+    $<HTMLInputElement>('show-density').addEventListener('change', () => actions.toggleDensity());
     $('clear-particles').addEventListener('click', () => actions.clearParticles());
 
     // Scene menu
@@ -247,6 +251,7 @@ export class Controls {
     $('toggle-trails').setAttribute('aria-pressed', String(s.trails));
     $('toggle-contours').setAttribute('aria-pressed', String(s.contours));
     $('toggle-force').setAttribute('aria-pressed', String(s.forceField));
+    $<HTMLInputElement>('show-density').checked = s.showDensity;
     for (const b of this.schemeButtons) {
       b.setAttribute('aria-checked', String(b.dataset.scheme === s.scheme));
     }
@@ -261,6 +266,13 @@ export class Controls {
     if (!active) return;
     this.segThumb.style.width = `${active.offsetWidth}px`;
     this.segThumb.style.transform = `translateX(${active.offsetLeft}px)`;
+  }
+
+  /** Reflects the recording state in the toolbar button. */
+  setRecording(on: boolean): void {
+    const b = $('toggle-record');
+    b.setAttribute('aria-pressed', String(on));
+    b.dataset.tip = on ? 'Stop recording' : 'Record run';
   }
 
   /** Reflects the live camera state in the toolbar button and the preview. */

@@ -8,8 +8,10 @@ import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { KlPanel } from './ui/klPanel';
+import { RecordingsPanel } from './ui/recordingsPanel';
 import { InputController } from './ui/input';
 import { EquilibriumMonitor } from './analysis/equilibrium';
+import { Recorder } from './record/recorder';
 import { ImageImporter } from './image/importer';
 import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
@@ -77,6 +79,24 @@ function main(): void {
     toggleCamera() {
       liveCamera.toggle();
     },
+    toggleRecording() {
+      const now = performance.now();
+      if (recorder.recording) {
+        const run = recorder.stop(now);
+        controls.setRecording(false);
+        recordings.render();
+        if (run) controls.showToast(`${run.name} saved: ${run.frames} frames`);
+      } else {
+        // Ψ is recorded on the KL box (or the view, if there is none) for the whole run.
+        recorder.start(now, monitor.region ?? camera.bounds());
+        controls.setRecording(true);
+        recordings.render(true);
+      }
+    },
+    toggleDensity() {
+      state.showDensity = !state.showDensity;
+      controls.sync();
+    },
     toggleForceField() {
       state.forceField = !state.forceField;
       controls.sync();
@@ -102,6 +122,21 @@ function main(): void {
     },
   };
   const controls = new Controls(state, actions);
+
+  const recorder = new Recorder({
+    field,
+    particles,
+    params: () => ({
+      sigma: state.sigma,
+      speed: state.speed,
+      kernelVariance: state.kernelVariance,
+      scheme: state.scheme,
+      playing: state.playing,
+    }),
+  });
+  const recordings = new RecordingsPanel(recorder, {
+    toast: (text, action) => controls.showToast(text, action),
+  });
 
   // Distance to equilibrium: KL between the kernel-smoothed particles and the Gibbs measure.
   const monitor = new EquilibriumMonitor(field, particles);
@@ -234,7 +269,12 @@ function main(): void {
         break;
       case 'r':
       case 'R':
-        actions.resetView();
+        if (e.shiftKey) actions.toggleRecording();
+        else actions.resetView();
+        break;
+      case 'd':
+      case 'D':
+        actions.toggleDensity();
         break;
       case '?':
       case 'h':
@@ -297,12 +337,29 @@ function main(): void {
       }
     }
 
+    // Analysis first, so that the density drawn below belongs to this frame's particles.
+    monitor.keepRunning = recorder.recording || state.showDensity;
+    if (monitor.update(now, state.sigma, state.kernelVariance, state.showDensity ? 33 : 100)) {
+      klPanel.draw();
+      const sample = monitor.latest;
+      const region = monitor.region;
+      if (recorder.recording && sample && region) recorder.addKl(particles.time, sample, region);
+    }
+    if (recorder.recording) {
+      if (recorder.tick(now)) {
+        controls.setRecording(false);
+        controls.showToast('Recording stopped: memory limit reached (400 MB of raw data)');
+      }
+      recordings.renderLive(now);
+    }
+
     if (!renderer.gl.isContextLost()) {
       renderer.render(camera, field, particles, {
         grid: state.grid,
         trails: state.trails,
         contours: state.contours,
         forceField: state.forceField,
+        density: state.showDensity ? monitor.density : null,
       });
     }
     overlay.draw(camera, {
@@ -314,10 +371,8 @@ function main(): void {
       nextColor: PALETTE[input.nextColor],
       panning: input.panning,
       selection: input.selection,
-      analysisBox: monitor.enabled ? monitor.region : null,
+      analysisBox: monitor.active ? monitor.region : null,
     });
-
-    if (monitor.update(now, state.sigma, state.kernelVariance)) klPanel.draw();
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
@@ -341,6 +396,7 @@ function main(): void {
       camera,
       liveCamera,
       monitor,
+      recorder,
       get renderer() {
         return renderer;
       },

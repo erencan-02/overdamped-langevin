@@ -26,6 +26,8 @@ export interface AppState {
   particleSpacing: number;
   /** Variance h² of the Gaussian kernel that smooths the empirical measure (world units²). */
   kernelVariance: number;
+  /** Draw the smoothed empirical measure on the scene. */
+  showDensity: boolean;
 }
 
 export function initialState(): AppState {
@@ -43,5 +45,6 @@ export function initialState(): AppState {
     brushStrength: DEFAULTS.brushStrength,
     particleSpacing: DEFAULTS.particleSpacing,
     kernelVariance: DEFAULTS.kernelVariance,
+    showDensity: false,
   };
 }
