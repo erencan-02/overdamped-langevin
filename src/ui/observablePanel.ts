@@ -178,7 +178,7 @@ export class ObservablePanel {
         this.info.textContent = `No particles in the box (${s.total} in total)${undef}.`;
       } else {
         const exact = Number.isFinite(s.exact)
-          ? `∫f dπ = ${formatValue(s.exact)}`
+          ? `∫f dπ ${s.exactStale ? '≈' : '='} ${formatValue(s.exact)}${s.exactStale ? ' (updating)' : ''}`
           : this.monitor.sigmaIsZero
             ? 'σ = 0: π has no density'
             : '∫f dπ undefined (f not finite)';

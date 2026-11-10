@@ -9,6 +9,13 @@ import { TimeSeries } from './timeSeries';
 const INTERVAL_MS = 100;
 /** The exact integral uses a refinement of the KL grid with at least this many cells per side. */
 const EXACT_CELLS = 256;
+/**
+ * While Ψ keeps changing (painting, live camera), the exact value is recomputed at most this
+ * often, or less often if one computation is slow: the gap is at least EXACT_COST_FACTOR times
+ * its cost, so it takes at most ~1/EXACT_COST_FACTOR of the time and the brush stays smooth.
+ */
+const EXACT_MIN_GAP_MS = 250;
+const EXACT_COST_FACTOR = 4;
 /** Two-sided 95 % normal quantile. */
 const Z95 = 1.959963984540054;
 
@@ -19,6 +26,11 @@ export interface ObservableSample {
   ci: number;
   /** ∫ f dπ_B, the Gibbs expectation on the box (NaN if undefined). */
   exact: number;
+  /**
+   * `exact` belongs to an earlier Ψ: Ψ is changing faster than the exact value is recomputed.
+   * It catches up at most EXACT_MIN_GAP_MS (or a few computation times) after Ψ settles.
+   */
+  exactStale: boolean;
   /** Particles in the box at which f is defined, and all particles. */
   inside: number;
   total: number;
@@ -35,7 +47,8 @@ export interface ObservableSample {
  *
  * B is exactly the KL region, so both analyses describe the same conditional measures. The
  * exact value is a midpoint sum over a refinement of the KL grid with the same Gibbs cell
- * probabilities, cached until f, Ψ, σ or the box change.
+ * probabilities, cached until f, Ψ, σ or the box change. While Ψ is being painted it is
+ * recomputed at a limited rate (see EXACT_MIN_GAP_MS) and flagged as stale in between.
  */
 export class ObservableMonitor {
   /** The observables window is open. */
@@ -54,7 +67,13 @@ export class ObservableMonitor {
   private lastInputs = '';
   private boxKey = '';
   private exact = NaN;
+  /** Inputs of `exact` other than the Ψ revision; a change here always recomputes at once. */
   private exactKey = '';
+  /** Ψ revision of `exact`. */
+  private exactRevision = -1;
+  private exactAt = -Infinity;
+  private exactCostMs = 0;
+  private exactStale = false;
   private readonly ctx: EvalContext;
   private sigma = 0;
 
@@ -83,6 +102,7 @@ export class ObservableMonitor {
     this.fn = fn;
     this.fnVersion++;
     this.exactKey = '';
+    this.exactStale = false;
     this.reset();
   }
 
@@ -103,7 +123,8 @@ export class ObservableMonitor {
     const ps = this.particles;
     const gridKey = `${grid.x0},${grid.y0},${grid.cell},${grid.nx},${grid.ny}`;
     const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${gridKey}|${this.fnVersion}`;
-    if (inputs === this.lastInputs) return false;
+    // A stale exact value is retried even when nothing else changed.
+    if (inputs === this.lastInputs && !this.exactStale) return false;
     // A different box (not just a re-snapped grid after changing h) starts a new curve.
     const b = this.equilibrium.box!;
     const boxKey = `${b.x0},${b.y0},${b.x1},${b.y1}`;
@@ -151,19 +172,36 @@ export class ObservableMonitor {
     }
     const m = n > 0 ? mean : NaN;
     const ci = n > 1 ? (Z95 * Math.sqrt(m2 / (n - 1))) / Math.sqrt(n) : NaN;
-    const exact = this.ensureExact(grid, gridKey, f);
+    const exact = this.ensureExact(grid, gridKey, f, nowMs);
 
-    this.latest = { mean: m, ci, exact, inside: n, total: ps.count, undefinedAt };
+    this.latest = { mean: m, ci, exact, exactStale: this.exactStale, inside: n, total: ps.count, undefinedAt };
     this.series.push(ps.time, { mean: m, lo: m - ci, hi: m + ci, exact });
     return true;
   }
 
-  private ensureExact(grid: AnalysisGrid, gridKey: string, f: CompiledObservable): number {
-    const key = `${gridKey}|${this.field.revision}|${this.field.epoch}|${this.sigma}|${this.fnVersion}`;
-    if (key !== this.exactKey) {
-      this.exact = exactExpectation(grid, f, this.field, this.ctx);
-      this.exactKey = key;
+  /**
+   * The exact value for the current inputs. A new f, σ, box, kernel grid or a replaced Ψ
+   * (epoch) is computed at once; a Ψ that is being edited (revision) at a limited rate.
+   */
+  private ensureExact(grid: AnalysisGrid, gridKey: string, f: CompiledObservable, nowMs: number): number {
+    const key = `${gridKey}|${this.field.epoch}|${this.sigma}|${this.fnVersion}`;
+    const revision = this.field.revision;
+    if (key === this.exactKey && revision === this.exactRevision) {
+      this.exactStale = false;
+      return this.exact;
     }
+    const gap = Math.max(EXACT_MIN_GAP_MS, EXACT_COST_FACTOR * this.exactCostMs);
+    if (key === this.exactKey && nowMs - this.exactAt < gap) {
+      this.exactStale = true; // only Ψ was edited, and recently: keep the previous value for now
+      return this.exact;
+    }
+    const t0 = performance.now();
+    this.exact = exactExpectation(grid, f, this.field, this.ctx);
+    this.exactCostMs = performance.now() - t0;
+    this.exactKey = key;
+    this.exactRevision = revision;
+    this.exactAt = nowMs;
+    this.exactStale = false;
     return this.exact;
   }
 }

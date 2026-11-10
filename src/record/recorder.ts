@@ -256,7 +256,7 @@ export class Run {
         obs_t: 'simulated time of each observable estimate (O)',
         obs_mean: 'mean of f(X_i) over the particles in the box (O)',
         obs_ci: 'half width of the 95% confidence interval of obs_mean (O)',
-        obs_exact: 'exact Gibbs expectation of f on the box (O)',
+        obs_exact: 'exact Gibbs expectation of f on the box; NaN while Psi was being edited faster than it was recomputed (O)',
         obs_inside: 'particles in the box at which f is defined (O)',
         obs_expr: 'index into metadata.observable_expressions (LaTeX) of f, per estimate (O)',
       },
@@ -407,7 +407,7 @@ export class Recorder {
     run.obsT.push(t);
     run.obsMean.push(s.mean);
     run.obsCi.push(s.ci);
-    run.obsExact.push(s.exact);
+    run.obsExact.push(s.exactStale ? NaN : s.exact); // a stale value belongs to an earlier Ψ
     run.obsInside.push(s.inside);
     run.obsExpr.push(k);
     run.bytes += 44;

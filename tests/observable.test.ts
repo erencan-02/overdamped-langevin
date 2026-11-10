@@ -72,6 +72,37 @@ describe('ObservableMonitor', () => {
     expect(obs.series.length).toBe(1);
   });
 
+  it('recomputes the exact value at a limited rate while Ψ is edited, then catches up', () => {
+    const { field, ps, obs } = setup();
+    ps.add(0.2, 0.1, 0);
+    obs.setFunction(compile('x'));
+    obs.update(0, 1, 0.09);
+    const flat = obs.latest!.exact;
+    expect(obs.latest!.exactStale).toBe(false);
+
+    // A brush stroke right after: the exact value is kept for now and flagged.
+    field.applyBrush(0.5, 0, -3, 0.3);
+    expect(obs.update(100, 1, 0.09)).toBe(true);
+    expect(obs.latest!.exactStale).toBe(true);
+    expect(obs.latest!.exact).toBe(flat);
+
+    // Ψ has settled: a later update (nothing else changed) recomputes it.
+    let now = 100;
+    while (obs.latest!.exactStale && now < 10_000) {
+      now += 100;
+      obs.update(now, 1, 0.09);
+    }
+    expect(obs.latest!.exactStale).toBe(false);
+    expect(obs.latest!.exact).toBeGreaterThan(flat + 0.1); // the new well at x = 0.5 pulls π right
+    expect(now).toBeLessThanOrEqual(1000);
+    expect(obs.update(now + 100, 1, 0.09)).toBe(false); // up to date: no more work
+
+    // A new σ or f is never delayed.
+    field.applyBrush(-0.5, 0, -3, 0.3);
+    obs.update(now + 200, 1.3, 0.09);
+    expect(obs.latest!.exactStale).toBe(false);
+  });
+
   it('skips points where f is undefined and does no work when nothing changed', () => {
     const { ps, obs } = setup();
     ps.add(0, 0, 0);
