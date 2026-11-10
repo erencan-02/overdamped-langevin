@@ -10,11 +10,10 @@ import {
   makeGrid,
   smoothAndNormalise,
 } from './kde';
+import { TimeSeries } from './timeSeries';
 
 /** Real-time interval between two estimates (10 Hz is plenty for a plot, and cheap). */
 const INTERVAL_MS = 100;
-/** History length; when full, every other point is dropped (the whole run stays visible). */
-const MAX_POINTS = 1200;
 
 export interface EquilibriumSample {
   /** KL(ρ̂_h ‖ π) on the box, or NaN if undefined (σ = 0 or no particle in the box). */
@@ -59,8 +58,8 @@ export class EquilibriumMonitor {
   /** Keep estimating even while the window is closed (recording, density shown). */
   keepRunning = false;
   box: Box | null = null;
-  readonly times: number[] = [];
-  readonly values: number[] = [];
+  /** KL over simulated time. */
+  readonly series = new TimeSeries(['kl'] as const);
   latest: EquilibriumSample | null = null;
 
   private grid: AnalysisGrid | null = null;
@@ -108,10 +107,17 @@ export class EquilibriumMonitor {
 
   /** Clears the time series (the next update starts a new one). */
   reset(): void {
-    this.times.length = 0;
-    this.values.length = 0;
+    this.series.clear();
     this.latest = null;
     this.lastInputs = '';
+  }
+
+  /**
+   * The analysis grid for this kernel variance (cached). Other analyses use it to work on
+   * exactly the same region as the KL estimate.
+   */
+  analysisGrid(kernelVariance: number): AnalysisGrid | null {
+    return this.box ? this.ensureGrid(Math.sqrt(kernelVariance)) : null;
   }
 
   /** The exact region the numbers refer to (the box snapped to the analysis grid). */
@@ -148,29 +154,8 @@ export class EquilibriumMonitor {
     const floor = logQ ? this.ensureFloor(grid, logQ, h) : NaN;
 
     this.latest = { kl, floor, inside, total: ps.count, kernelCells: h / grid.cell, h };
-    this.record(ps.time, kl);
+    this.series.push(ps.time, { kl });
     return true;
-  }
-
-  private record(t: number, kl: number): void {
-    const n = this.times.length;
-    if (n > 0 && t <= this.times[n - 1]) {
-      // Paused (or nothing advanced): update the current point instead of adding one.
-      this.values[n - 1] = kl;
-      return;
-    }
-    this.times.push(t);
-    this.values.push(kl);
-    if (this.times.length > MAX_POINTS) {
-      let w = 0;
-      for (let r = 0; r < this.times.length; r += 2) {
-        this.times[w] = this.times[r];
-        this.values[w] = this.values[r];
-        w++;
-      }
-      this.times.length = w;
-      this.values.length = w;
-    }
   }
 
   private ensureGrid(h: number): AnalysisGrid {
