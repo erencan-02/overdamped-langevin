@@ -98,14 +98,16 @@ is $\mathrm{KL}(\pi * K_h \,\|\, \pi)$, the value that perfect sampling approach
 the curve should level off at or slightly above it (the excess is the finite-N noise).
 
 **Custom observables.** The *Observable* window above it takes a test function $f(x, y)$ typed in
-LaTeX (`x^2 + y^2`, `\mathbf{1}_{x>0}`, `\cos(\pi x)`, `rac{1}{2}\sigma^2 + \Psi`, …) and plots the mean
-of $f$ over the particles in the analysis box with a 95 % confidence band ($ar f \pm 1.96\, s/\sqrt n$)
+LaTeX (`x^2 + y^2`, `\mathbf{1}_{x>0}`, `\cos(\pi x)`, `\frac{1}{2}\sigma^2 + \Psi`, …) and plots the mean
+of $f$ over the particles in the analysis box with a 95 % confidence band ($\bar f \pm 1.96\, s/\sqrt n$)
 against the exact Gibbs expectation $\int_B f\,d\pi$ (a midpoint sum over ≥ 256 cells per side, recomputed
 only when f, Ψ, σ or the box change). This is the weak-convergence counterpart of the KL plot, and the
 remaining gap at equilibrium is the time-discretisation bias that the weak order of a scheme describes.
-The input is parsed by a small LaTeX parser (`src/analysis/latex.ts`) into a syntax tree and compiled to
-closures, never evaluated as code; errors such as a tuple (*output must be a scalar*) are shown under the
-input while the last valid function stays in use.
+The input is parsed and compiled by the [Cortex Compute Engine](https://cortexjs.io/compute-engine/),
+which runs in the browser and is loaded only when the window is first opened (`src/analysis/latex.ts`
+adapts it: allowed symbols x, y, r, θ, σ, Ψ, indicators, and messages such as *output must be a scalar*,
+shown under the input while the last valid function stays in use). Its batch evaluator computes f at all
+particles and grid cells at once.
 
 **Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
 estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its

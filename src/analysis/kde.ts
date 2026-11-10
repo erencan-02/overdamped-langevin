@@ -60,12 +60,14 @@ export function gridBox(g: AnalysisGrid): Box {
 /**
  * Log cell probabilities of the Gibbs measure on the grid: log q_c with Σ q_c = 1, where
  * q_c ∝ exp(−2Ψ(c)/σ²) (Ψ sampled at the cell centre). Uses log-sum-exp, so very small σ does
- * not overflow. Returns null if σ is (practically) zero, where π has no density.
+ * not overflow. Returns null if σ is (practically) zero, where π has no density. If `psiOut` is
+ * given, it receives Ψ at the cell centres (for callers that need Ψ again).
  */
 export function gibbsLogProbabilities(
   grid: AnalysisGrid,
   psiAt: (x: number, y: number) => number,
   sigma: number,
+  psiOut?: Float64Array,
 ): Float64Array | null {
   if (!(sigma > 1e-6)) return null;
   const { nx, ny, x0, y0, cell } = grid;
@@ -75,7 +77,9 @@ export function gibbsLogProbabilities(
   for (let j = 0; j < ny; j++) {
     const y = y0 + (j + 0.5) * cell;
     for (let i = 0; i < nx; i++) {
-      const v = k * psiAt(x0 + (i + 0.5) * cell, y);
+      const psi = psiAt(x0 + (i + 0.5) * cell, y);
+      if (psiOut) psiOut[j * nx + i] = psi;
+      const v = k * psi;
       a[j * nx + i] = v;
       if (v > max) max = v;
     }

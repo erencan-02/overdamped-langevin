@@ -4,7 +4,6 @@ import type { RandomStreams } from '../sim/random';
 import { SCHEMES, type SchemeId } from '../sim/schemes';
 import type { AppState } from '../state';
 import { StateComponent } from './component';
-import { parseFunction } from '../analysis/latex';
 import { BooleanField, EnumField, type Field, IntegerField, NumberField, StringField } from './fields';
 
 type Settings<K extends keyof AppState> = Partial<Pick<AppState, K>>;
@@ -93,7 +92,8 @@ export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
   protected readonly fields = [
     new NumberField('kernelVariance', ...RANGES.kernelVariance),
     new BooleanField('showDensity'),
-    new StringField('observable', 500, (tex) => parseFunction(tex).ok),
+    // Checked by the observables window when applied (the LaTeX parser loads on demand).
+    new StringField('observable', 500),
   ] as Field<AppState[AnalysisKey]>[];
 }
 

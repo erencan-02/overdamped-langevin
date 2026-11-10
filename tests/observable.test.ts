@@ -1,14 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { EquilibriumMonitor } from '../src/analysis/equilibrium';
-import { parseFunction } from '../src/analysis/latex';
+import { loadTexParser, type TexParser } from '../src/analysis/latex';
 import { exactExpectation, ObservableMonitor } from '../src/analysis/observable';
 import { MAX_POINTS, TimeSeries } from '../src/analysis/timeSeries';
 import { PotentialField } from '../src/sim/field';
 import { ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
 
+let parser: TexParser;
+beforeAll(async () => {
+  parser = await loadTexParser();
+});
+
 function compile(tex: string) {
-  const r = parseFunction(tex);
+  const r = parser.parse(tex);
   if (!r.ok) throw new Error(r.message);
   return r.fn;
 }

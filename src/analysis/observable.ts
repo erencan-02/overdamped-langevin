@@ -2,7 +2,7 @@ import type { PotentialField } from '../sim/field';
 import type { ParticleSystem } from '../sim/particles';
 import type { EquilibriumMonitor } from './equilibrium';
 import { type AnalysisGrid, gibbsLogProbabilities, gridBox } from './kde';
-import type { CompiledFunction, EvalContext } from './latex';
+import type { CompiledObservable, EvalContext } from './latex';
 import { TimeSeries } from './timeSeries';
 
 /** Real-time interval between two estimates. */
@@ -45,7 +45,10 @@ export class ObservableMonitor {
   readonly series = new TimeSeries(['mean', 'lo', 'hi', 'exact'] as const);
   latest: ObservableSample | null = null;
 
-  private fn: CompiledFunction | null = null;
+  private fn: CompiledObservable | null = null;
+  /** Scratch columns: positions of the particles inside the box. */
+  private xs = new Float64Array(0);
+  private ys = new Float64Array(0);
   private fnVersion = 0;
   private lastRun = -Infinity;
   private lastInputs = '';
@@ -76,7 +79,7 @@ export class ObservableMonitor {
   }
 
   /** Sets the test function (null: none); the time series starts over. */
-  setFunction(fn: CompiledFunction | null): void {
+  setFunction(fn: CompiledObservable | null): void {
     this.fn = fn;
     this.fnVersion++;
     this.exactKey = '';
@@ -113,17 +116,30 @@ export class ObservableMonitor {
     this.ctx.sigma = sigma;
     this.sigma = sigma;
 
-    // Empirical mean and variance over the particles in B (Welford: stable for large means).
+    // f at the particles in B, evaluated in one batch.
     const box = gridBox(grid);
-    let n = 0;
-    let undefinedAt = 0;
-    let mean = 0;
-    let m2 = 0;
+    if (this.xs.length < ps.count) {
+      this.xs = new Float64Array(ps.x.length);
+      this.ys = new Float64Array(this.xs.length);
+    }
+    let inBox = 0;
     for (let p = 0; p < ps.count; p++) {
       const x = ps.x[p];
       const y = ps.y[p];
       if (!(x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1)) continue;
-      const v = f(x, y, this.ctx);
+      this.xs[inBox] = x;
+      this.ys[inBox] = y;
+      inBox++;
+    }
+    const values = f.evaluate(this.xs, this.ys, inBox, this.ctx);
+
+    // Mean and variance (Welford: stable for large means).
+    let n = 0;
+    let undefinedAt = 0;
+    let mean = 0;
+    let m2 = 0;
+    for (let k = 0; k < inBox; k++) {
+      const v = values[k];
       if (!Number.isFinite(v)) {
         undefinedAt++;
         continue;
@@ -142,7 +158,7 @@ export class ObservableMonitor {
     return true;
   }
 
-  private ensureExact(grid: AnalysisGrid, gridKey: string, f: CompiledFunction): number {
+  private ensureExact(grid: AnalysisGrid, gridKey: string, f: CompiledObservable): number {
     const key = `${gridKey}|${this.field.revision}|${this.field.epoch}|${this.sigma}|${this.fnVersion}`;
     if (key !== this.exactKey) {
       this.exact = exactExpectation(grid, f, this.field, this.ctx);
@@ -159,29 +175,45 @@ export class ObservableMonitor {
  */
 export function exactExpectation(
   grid: AnalysisGrid,
-  f: CompiledFunction,
+  f: CompiledObservable,
   field: Pick<PotentialField, 'sample'>,
   ctx: EvalContext,
 ): number {
   const m = Math.max(1, Math.ceil(EXACT_CELLS / Math.max(grid.nx, grid.ny)));
   const fine: AnalysisGrid = { x0: grid.x0, y0: grid.y0, cell: grid.cell / m, nx: grid.nx * m, ny: grid.ny * m };
-  const logQ = gibbsLogProbabilities(fine, (x, y) => field.sample(x, y), ctx.sigma);
+  const n = fine.nx * fine.ny;
+  const psiAt = new Float64Array(n); // Ψ at the cells: sampled once, for π and for f
+  const logQ = gibbsLogProbabilities(fine, (x, y) => field.sample(x, y), ctx.sigma, psiAt);
   if (!logQ) return NaN;
-  // Kahan summation: up to ~10^5 terms of very different sizes.
-  let sum = 0;
-  let comp = 0;
+  // f at the cells that carry mass, in one batch.
+  const xs = new Float64Array(n);
+  const ys = new Float64Array(n);
+  const psi = new Float64Array(n);
+  const q = new Float64Array(n);
+  let used = 0;
   for (let j = 0; j < fine.ny; j++) {
     const y = fine.y0 + (j + 0.5) * fine.cell;
     for (let i = 0; i < fine.nx; i++) {
-      const q = Math.exp(logQ[j * fine.nx + i]);
-      if (q === 0) continue;
-      const v = f(fine.x0 + (i + 0.5) * fine.cell, y, ctx);
-      if (!Number.isFinite(v)) return NaN;
-      const term = q * v - comp;
-      const t = sum + term;
-      comp = t - sum - term;
-      sum = t;
+      const qc = Math.exp(logQ[j * fine.nx + i]);
+      if (qc === 0) continue;
+      xs[used] = fine.x0 + (i + 0.5) * fine.cell;
+      ys[used] = y;
+      psi[used] = psiAt[j * fine.nx + i];
+      q[used] = qc;
+      used++;
     }
+  }
+  const values = f.evaluate(xs, ys, used, ctx, psi);
+  // Kahan summation: up to ~10^5 terms of very different sizes.
+  let sum = 0;
+  let comp = 0;
+  for (let k = 0; k < used; k++) {
+    const v = values[k];
+    if (!Number.isFinite(v)) return NaN;
+    const term = q[k] * v - comp;
+    const t = sum + term;
+    comp = t - sum - term;
+    sum = t;
   }
   return sum;
 }

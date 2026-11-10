@@ -1,4 +1,4 @@
-import { parseFunction } from '../analysis/latex';
+import { loadTexParser, type TexParser } from '../analysis/latex';
 import type { ObservableMonitor } from '../analysis/observable';
 import { byId, CollapsiblePanel, formatValue } from './collapsiblePanel';
 import { TimeSeriesPlot } from './timeSeriesPlot';
@@ -11,7 +11,9 @@ const PARSE_DELAY_MS = 350;
  * (red outline and message on errors, a rendered preview otherwise), and a live plot of the
  * particle mean of f with its 95 % confidence band against the exact Gibbs expectation.
  *
- * While the input is invalid, the last valid function stays in use (and in the state).
+ * Parsing and the preview use the Compute Engine and KaTeX, both loaded when the window is
+ * first opened. While the input is invalid, the last valid function stays in use (and in the
+ * state).
  */
 export class ObservablePanel {
   private readonly input = byId<HTMLInputElement>('obs-input');
@@ -22,14 +24,17 @@ export class ObservablePanel {
   private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('obs-plot'), 'linear');
   private readonly panel: CollapsiblePanel;
   private timer = 0;
-  /** The expression the monitor currently uses. */
+  /** The expression the monitor currently uses ('' until the parser has loaded). */
   private applied = '';
+  private parser: TexParser | null = null;
+  private loadFailed = false;
+  private loadStarted = false;
   private katex: typeof import('./helpMath') | null = null;
 
   constructor(
     private readonly monitor: ObservableMonitor,
     private readonly actions: {
-      /** The current (valid) expression from the state. */
+      /** The current expression from the state. */
       expression(): string;
       /** A new valid expression was entered. */
       setExpression(tex: string): void;
@@ -42,7 +47,7 @@ export class ObservablePanel {
         this.monitor.enabled = open;
         if (open) {
           if (!this.monitor.keepRunning) this.monitor.reset();
-          void this.loadKatex();
+          this.load();
           this.draw();
         } else {
           this.value.textContent = '';
@@ -60,7 +65,7 @@ export class ObservablePanel {
       } else if (e.key === 'Escape') {
         // Give up the edit: back to the expression in use (and nothing else reacts to Escape).
         e.stopPropagation();
-        this.input.value = this.applied;
+        if (this.applied) this.input.value = this.applied;
         this.commit();
         this.input.blur();
       }
@@ -80,7 +85,6 @@ export class ObservablePanel {
     new ResizeObserver(() => this.draw()).observe(byId('obs-plot'));
 
     this.input.value = actions.expression();
-    this.use(this.input.value);
     this.panel.setOpen(false);
   }
 
@@ -89,33 +93,58 @@ export class ObservablePanel {
     const tex = this.actions.expression();
     if (tex === this.applied) return;
     if (document.activeElement !== this.input) this.input.value = tex;
-    this.use(tex);
-    this.showError(null);
+    if (this.parser) this.use(tex);
+    // Otherwise the input holds it until the parser has loaded.
+  }
+
+  /** Loads the parser and KaTeX (once), then starts using the expression in the input. */
+  private load(): void {
+    if (this.loadStarted) return;
+    this.loadStarted = true;
+    import('./helpMath')
+      .then((m) => {
+        this.katex = m;
+        this.renderPreview();
+      })
+      .catch((err) => console.error(err)); // the preview is optional
+    loadTexParser()
+      .then((parser) => {
+        this.parser = parser;
+        this.commit();
+        this.draw();
+      })
+      .catch((err) => {
+        console.error(err);
+        this.loadFailed = true;
+        this.draw();
+      });
   }
 
   /** Parses the input: shows the error, or starts using the new function. */
   private commit(): void {
     window.clearTimeout(this.timer);
+    if (!this.parser) return;
     const tex = this.input.value.trim();
-    const r = parseFunction(tex);
-    if (!r.ok) {
-      this.showError(r.message);
+    if (tex === this.applied) {
+      this.showError(null);
       return;
     }
-    this.showError(null);
-    if (tex !== this.applied) {
-      this.use(tex);
-      this.actions.setExpression(tex);
-    }
+    if (this.use(tex)) this.actions.setExpression(tex);
   }
 
-  private use(tex: string): void {
-    const r = parseFunction(tex);
-    if (!r.ok) return;
+  /** Starts using `tex` if it is valid; otherwise shows why not. */
+  private use(tex: string): boolean {
+    const r = this.parser!.parse(tex);
+    if (!r.ok) {
+      this.showError(r.message);
+      return false;
+    }
+    this.showError(null);
     this.applied = tex;
     this.monitor.setFunction(r.fn);
     this.renderPreview();
     this.draw();
+    return true;
   }
 
   private showError(message: string | null): void {
@@ -124,16 +153,6 @@ export class ObservablePanel {
     this.error.textContent = message ?? '';
     // The preview keeps showing the function in use, dimmed while the input differs from it.
     this.preview.classList.toggle('stale', message !== null);
-  }
-
-  private async loadKatex(): Promise<void> {
-    if (this.katex) return;
-    try {
-      this.katex = await import('./helpMath');
-      this.renderPreview();
-    } catch (err) {
-      console.error(err); // the preview is optional; the panel works without it
-    }
   }
 
   private renderPreview(): void {
@@ -147,7 +166,13 @@ export class ObservablePanel {
     if (this.monitor.enabled) {
       this.value.textContent = s && Number.isFinite(s.mean) ? formatValue(s.mean) : '—';
       const undef = s && s.undefinedAt > 0 ? ` · f undefined at ${s.undefinedAt}` : '';
-      if (!s) {
+      if (this.loadFailed) {
+        this.info.textContent = 'The formula engine could not be loaded. Check the connection and reload.';
+      } else if (!this.parser) {
+        this.info.textContent = 'Loading the formula engine…';
+      } else if (!this.applied) {
+        this.info.textContent = 'Enter a valid function to start.';
+      } else if (!s) {
         this.info.textContent = 'Waiting for particles…';
       } else if (s.inside === 0) {
         this.info.textContent = `No particles in the box (${s.total} in total)${undef}.`;
