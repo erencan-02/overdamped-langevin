@@ -1,5 +1,5 @@
 import type { PotentialField } from './field';
-import { Rng } from './rng';
+import type { Rng } from './rng';
 
 export type PresetName = 'double-well' | 'ring' | 'landscape';
 
@@ -12,7 +12,13 @@ const gauss = (A: number, s: number, x0: number, y0: number) => {
  * Replaces the field with a ready-made landscape centred at (cx, cy). Every preset is a
  * smooth function that decays to 0, so the clamped grid representation has no artificial edges.
  */
-export function applyPreset(field: PotentialField, name: PresetName, cx: number, cy: number): void {
+export function applyPreset(
+  field: PotentialField,
+  name: PresetName,
+  cx: number,
+  cy: number,
+  rng: Rng,
+): void {
   field.clear();
   const terms: { f: (x: number, y: number) => number; reach: number; x: number; y: number }[] = [];
   const add = (A: number, s: number, x: number, y: number) =>
@@ -36,7 +42,6 @@ export function applyPreset(field: PotentialField, name: PresetName, cx: number,
       break;
     }
     case 'landscape': {
-      const rng = new Rng();
       for (let k = 0; k < 16; k++) {
         const A = (rng.float() < 0.5 ? -1 : 1) * (1.5 + 2.5 * rng.float());
         const s = 0.5 + 0.9 * rng.float();

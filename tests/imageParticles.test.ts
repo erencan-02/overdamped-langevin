@@ -85,9 +85,9 @@ describe('sampleImagePoints', () => {
     for (let p = 0; p < inv.length; p += 2) expect(inv[p]).toBeGreaterThanOrEqual(19.5);
 
     const clear = image(40, 40, (i) => (i < 20 ? 0 : 1), () => 0);
-    expect(sampleImagePoints(clear, 200, { invert: false })).toBeNull();
+    expect(sampleImagePoints(clear, 200, { invert: false, random: seeded() })).toBeNull();
 
     const flat = image(40, 40, () => 0.3);
-    expect(sampleImagePoints(flat, 200, { invert: false })).toBeNull();
+    expect(sampleImagePoints(flat, 200, { invert: false, random: seeded() })).toBeNull();
   });
 });

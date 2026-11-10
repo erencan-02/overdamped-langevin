@@ -3,6 +3,7 @@ import { CELL_SIZE, PALETTE, PSI_CAP } from './config';
 import { Renderer } from './render/renderer';
 import { PotentialField } from './sim/field';
 import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES, ParticleSystem } from './sim/particles';
+import { RandomStreams } from './sim/random';
 import { applyPreset, type PresetName } from './sim/presets';
 import { SCHEMES, type SchemeId } from './sim/schemes';
 import { initialState, type Mode } from './state';
@@ -32,7 +33,9 @@ function main(): void {
 
   const state = initialState();
   const field = new PotentialField({ cellSize: CELL_SIZE, cap: PSI_CAP });
-  const particles = new ParticleSystem();
+  // One seed drives every random number in the app (see sim/random.ts).
+  const random = new RandomStreams(state.seed);
+  const particles = new ParticleSystem(random.get('dynamics'));
   particles.scheme = SCHEMES[state.scheme];
   const camera = new Camera();
 
@@ -45,7 +48,7 @@ function main(): void {
     return;
   }
   const overlay = new Overlay(overlayCanvas);
-  const input = new InputController(stage, camera, field, particles, state);
+  const input = new InputController(stage, camera, field, particles, state, random);
 
   const actions: ControlActions = {
     setMode(mode: Mode) {
@@ -118,7 +121,7 @@ function main(): void {
     },
     preset(name: string) {
       liveCamera.stop();
-      applyPreset(field, name as PresetName, camera.x, camera.y);
+      applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets'));
     },
   };
   const controls = new Controls(state, actions);
@@ -179,7 +182,7 @@ function main(): void {
     },
   );
 
-  const importer = new ImageImporter(field, particles, camera, {
+  const importer = new ImageImporter(field, particles, camera, random, {
     onStart: (target) => {
       if (target === 'potential') liveCamera.stop(); // a dropped image replaces the live potential
       input.cancel();

@@ -15,8 +15,8 @@ export interface ImagePointsOptions {
   /** Swap light and dark. */
   invert: boolean;
   levels?: DarknessLevels;
-  /** Uniform random numbers in [0, 1) for the jitter (defaults to Math.random). */
-  random?: () => number;
+  /** Uniform random numbers in [0, 1) for the jitter and top-up (a seeded stream). */
+  random: () => number;
 }
 
 /**
@@ -67,7 +67,7 @@ export function sampleImagePoints(
     }
   }
 
-  const random = opts.random ?? Math.random;
+  const random = opts.random;
 
   // Error pushed past the image border is lost, so the total can fall a little short (≈1 %).
   // Top up by drawing the missing particles with probability proportional to the weights.

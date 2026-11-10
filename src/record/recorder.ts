@@ -2,7 +2,7 @@ import { CELL_SIZE, PALETTE, PALETTE_RGB, PSI_CAP } from '../config';
 import type { EquilibriumSample } from '../analysis/equilibrium';
 import type { Box } from '../analysis/kde';
 import type { PotentialField } from '../sim/field';
-import { DEFAULT_DT_MAX, DT_LIMIT, MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
+import { DEFAULT_DT_MAX, MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import type { SchemeId } from '../sim/schemes';
 import { type NpyArray, npyString, npzArchive } from './npz';
 
@@ -172,8 +172,7 @@ export class Run {
         psi_cap: PSI_CAP,
         psi_lattice_spacing: CELL_SIZE,
         max_particles: MAX_PARTICLES,
-        dt_max: DEFAULT_DT_MAX,
-        dt_limit: DT_LIMIT,
+        dt: DEFAULT_DT_MAX,
         palette: PALETTE,
         schemes: ['heun', 'euler-maruyama'],
       },

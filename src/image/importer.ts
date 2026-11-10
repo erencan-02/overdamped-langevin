@@ -3,6 +3,7 @@ import type { PotentialField } from '../sim/field';
 import { sampleImagePoints } from '../sim/imageParticles';
 import { IMAGE_BLUR_WORLD, imageToPotential } from '../sim/imagePotential';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
+import type { RandomStreams } from '../sim/random';
 import type { Camera } from '../view/camera';
 import { type DecodedImage, decodeSource, isImageFile } from './decode';
 import type { WorkerRequest } from './decode.worker';
@@ -72,6 +73,7 @@ export class ImageImporter {
     private readonly field: PotentialField,
     private readonly particles: ParticleSystem,
     private readonly camera: Camera,
+    private readonly random: RandomStreams,
     private readonly hooks: ImporterHooks,
   ) {
     window.addEventListener('dragenter', this.onDragEnter);
@@ -314,12 +316,16 @@ export class ImageImporter {
    */
   private applyParticles(image: DecodedImage, x0: number, yTop: number, inverted: boolean): number {
     const h = this.field.h;
-    const pts = sampleImagePoints(image, MAX_PARTICLES, { invert: inverted });
+    const pts = sampleImagePoints(image, MAX_PARTICLES, {
+      invert: inverted,
+      random: this.random.uniform('images'),
+    });
+    const colors = this.random.get('colors');
     if (!pts) return 0;
     const ps = this.particles;
     ps.clear();
     for (let p = 0; p < pts.length; p += 2) {
-      ps.add(x0 + pts[p] * h, yTop - pts[p + 1] * h, Math.floor(Math.random() * PALETTE.length));
+      ps.add(x0 + pts[p] * h, yTop - pts[p + 1] * h, colors.int(PALETTE.length));
     }
     return ps.count;
   }

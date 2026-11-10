@@ -2,6 +2,7 @@ import { PALETTE } from '../config';
 import type { PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import { forEachGridPoint, spawnGrid } from '../sim/spawnGrid';
+import type { RandomStreams } from '../sim/random';
 import type { AppState } from '../state';
 import type { Camera } from '../view/camera';
 
@@ -61,6 +62,7 @@ export class InputController {
     private readonly field: PotentialField,
     private readonly ps: ParticleSystem,
     private readonly state: AppState,
+    private readonly random: RandomStreams,
   ) {
     this.pickNextColor();
     el.addEventListener('pointerdown', this.onDown);
@@ -103,8 +105,9 @@ export class InputController {
   }
 
   private pickNextColor(): void {
-    let c = Math.floor(Math.random() * PALETTE.length);
-    if (c === this.nextColor) c = (c + 1 + Math.floor(Math.random() * (PALETTE.length - 1))) % PALETTE.length;
+    const rng = this.random.get('colors');
+    let c = rng.int(PALETTE.length);
+    if (c === this.nextColor) c = (c + 1 + rng.int(PALETTE.length - 1)) % PALETTE.length;
     this.nextColor = c;
   }
 
@@ -293,8 +296,9 @@ export class InputController {
       const jitter = SPRAY_JITTER / this.cam.scale;
       while (this.sprayCarry >= 1 && !this.ps.full) {
         this.sprayCarry -= 1;
-        const a = Math.random() * Math.PI * 2;
-        const rr = jitter * Math.sqrt(Math.random());
+        const spawn = this.random.get('spawn');
+        const a = spawn.float() * Math.PI * 2;
+        const rr = jitter * Math.sqrt(spawn.float());
         this.dropParticle(cx + rr * Math.cos(a), cy + rr * Math.sin(a));
       }
       if (this.ps.full) this.sprayCarry = 0;

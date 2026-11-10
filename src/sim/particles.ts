@@ -6,19 +6,18 @@ export const MAX_PARTICLES = 2000;
 export const TRAIL_LEN = 40;
 /** Simulated time between two stored trail points. */
 export const TRAIL_DT = 1 / 50;
-/** Largest internal time step of the integrator. */
-export const DEFAULT_DT_MAX = 1 / 500;
 /**
- * Largest step the integrator will ever take. If the work budget cannot afford steps this
- * small, the simulation runs slower than requested rather than becoming inaccurate.
+ * Time step of the integrator. The simulation runs on a fixed clock: every step has exactly this
+ * length and leftover time is carried over to the next frame, so a run depends only on the seed
+ * and on what the user does, not on the frame rate.
  */
-export const DT_LIMIT = 1 / 100;
+export const DEFAULT_DT_MAX = 1 / 500;
 /** Upper bound on sub-steps per frame so a frame can never stall the UI. */
 const MAX_SUBSTEPS = 160;
 /**
  * Upper bound on drift evaluations per `advance` call. With very many particles at high speed
- * the step size grows beyond dtMax (up to DT_LIMIT) instead of stalling the frame. Both schemes
- * stay stable for Δt·max|∇²Ψ| < 2, which holds by a wide margin for the brush sizes the UI allows.
+ * the simulation then runs slower than real time instead of stalling the frame; the step size
+ * never changes.
  */
 export const DEFAULT_WORK_BUDGET = 80_000;
 
@@ -62,6 +61,9 @@ export class ParticleSystem {
   time = 0;
   /** Incremented whenever positions or membership change (lets the renderer skip uploads). */
   version = 0;
+
+  /** Simulated time requested but not yet integrated (always less than one step). */
+  clockRemainder = 0;
 
   /** Numerical scheme used by `step` and `advance`. */
   scheme: Scheme;
@@ -136,35 +138,45 @@ export class ParticleSystem {
   }
 
   /**
-   * Advances the ensemble by simulated time T using sub-steps no longer than dtMax, doing at
-   * most `workBudget` drift evaluations. Returns the simulated time actually advanced (less
-   * than T only if the budget would force steps above DT_LIMIT).
+   * Advances the ensemble by simulated time T in fixed steps of length dt. Time that does not
+   * fill a whole step is carried over to the next call. At most `workBudget` drift evaluations
+   * are spent; if that is not enough, the missing time is dropped (the simulation falls behind
+   * real time) rather than taking larger steps. Returns the simulated time actually advanced.
    */
   advance(
     field: DriftField,
     T: number,
     sigma: number,
-    dtMax = DEFAULT_DT_MAX,
-    workBudget = DEFAULT_WORK_BUDGET,
+    dt = DEFAULT_DT_MAX,
+    workBudget = Infinity,
   ): number {
     if (!(T > 0)) return 0;
+    const pending = this.clockRemainder + T;
+    let n = Math.floor(pending / dt + 1e-9);
+    // Only a finite budget (the live frame loop) limits the work per call.
     const costPerStep = Math.max(1, this.count) * this.scheme.driftEvals;
-    const affordable = Math.floor(workBudget / costPerStep);
-    const n = Math.max(1, Math.min(MAX_SUBSTEPS, affordable, Math.ceil(T / dtMax)));
-    if (T / n > DT_LIMIT) T = n * DT_LIMIT;
-    const dt = T / n;
+    const limit = Number.isFinite(workBudget)
+      ? Math.max(1, Math.min(MAX_SUBSTEPS, Math.floor(workBudget / costPerStep)))
+      : Infinity;
+    if (n > limit) {
+      n = limit;
+      this.clockRemainder = 0;
+    } else {
+      this.clockRemainder = Math.max(0, pending - n * dt);
+    }
     for (let s = 0; s < n; s++) {
       this.step(field, dt, sigma);
       this.trailClock += dt;
-      if (this.trailClock >= TRAIL_DT) {
+      if (this.trailClock >= TRAIL_DT - 1e-12) {
         this.trailClock -= TRAIL_DT;
         if (this.trailClock >= TRAIL_DT) this.trailClock = 0;
         this.recordTrail();
       }
     }
-    this.time += T;
+    const advanced = n * dt;
+    this.time += advanced;
     this.lastSubsteps = n;
-    return T;
+    return advanced;
   }
 
   /** Number of sub-steps taken by the last `advance` call. */

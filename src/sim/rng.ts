@@ -43,7 +43,13 @@ export class Rng {
   private c: number;
   private d: number;
 
-  constructor(seed = (Math.random() * 2 ** 32) >>> 0) {
+  constructor(seed = 0) {
+    this.a = this.b = this.c = this.d = 0;
+    this.reseed(seed);
+  }
+
+  /** Restarts the sequence from `seed` (any 32-bit integer). */
+  reseed(seed: number): void {
     // splitmix32 to spread the seed over the 128-bit state.
     let s = seed | 0;
     const next = () => {
@@ -57,6 +63,20 @@ export class Rng {
     this.b = next();
     this.c = next();
     this.d = next();
+    if ((this.a | this.b | this.c | this.d) === 0) this.a = 1;
+  }
+
+  /** The full generator state (4 × 32 bits), e.g. to store it in a recording. */
+  getState(): [number, number, number, number] {
+    return [this.a >>> 0, this.b >>> 0, this.c >>> 0, this.d >>> 0];
+  }
+
+  /** Restores a state returned by getState(): the sequence continues exactly from there. */
+  setState(state: ArrayLike<number>): void {
+    this.a = state[0] | 0;
+    this.b = state[1] | 0;
+    this.c = state[2] | 0;
+    this.d = state[3] | 0;
     if ((this.a | this.b | this.c | this.d) === 0) this.a = 1;
   }
 

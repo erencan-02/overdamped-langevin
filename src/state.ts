@@ -18,6 +18,8 @@ export interface AppState {
   speed: number;
   /** Numerical scheme used to integrate the SDE. */
   scheme: SchemeId;
+  /** Seed of all random number streams (non-negative integer). */
+  seed: number;
   /** Standard deviation of the Gaussian brush (world units). */
   brushRadius: number;
   /** Rate at which the brush changes Ψ at its centre (Ψ units per second). */
@@ -41,6 +43,7 @@ export function initialState(): AppState {
     sigma: DEFAULTS.sigma,
     speed: DEFAULTS.speed,
     scheme: DEFAULT_SCHEME,
+    seed: 0,
     brushRadius: DEFAULTS.brushRadius,
     brushStrength: DEFAULTS.brushStrength,
     particleSpacing: DEFAULTS.particleSpacing,
