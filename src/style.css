@@ -1059,6 +1059,66 @@ body.is-busy .stage {
 .swatch.cold {
   background: linear-gradient(135deg, #6fd3b6, #4256c9);
 }
+/* Theory walkthrough */
+.theory {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.theory > li {
+  position: relative;
+  padding: 0 0 14px 34px;
+  counter-increment: step;
+}
+.theory > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -1px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.theory h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.theory p {
+  margin: 4px 0;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.tex-display {
+  margin: 8px 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 9px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+}
+.tex-display .katex-display {
+  margin: 0;
+}
+.modal .katex {
+  font-size: 1.05em;
+}
+.help-section {
+  margin: 18px 0 12px !important;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 16px !important;
+}
 .help-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

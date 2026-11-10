@@ -217,20 +217,109 @@
         </button>
         <h2 id="help-title">Potential SDE</h2>
         <p class="lead">
-          Every particle follows the overdamped Langevin equation
-          <span class="eq">dX<sub>t</sub> = −∇Ψ(X<sub>t</sub>) dt + σ dW<sub>t</sub></span>
-          It slides downhill on the landscape Ψ while Brownian motion with diffusivity σ shakes it.
-          <span class="swatch hot"></span> warm areas are hills (Ψ &gt; 0) and push particles away,
-          <span class="swatch cold"></span> cool areas are valleys (Ψ &lt; 0) and attract them. |Ψ| is capped at <span id="help-cap"></span>.
-          The <b>force field</b> toggle draws the drift −∇Ψ as arrows: they point the way particles are pushed,
-          and their length grows with the force and levels off for very steep slopes.
+          Paint a potential landscape <span class="tex" data-tex="\Psi"></span>, drop particles, and watch them follow an overdamped Langevin
+          equation. The walkthrough below explains the mathematics behind the simulation and the
+          <i>KL to equilibrium</i> window; the controls come after it.
         </p>
+
+        <ol class="theory">
+          <li>
+            <h3>The dynamics</h3>
+            <p>Every particle moves independently according to the stochastic differential equation</p>
+            <div class="tex-display" data-tex="dX_t = -\nabla\Psi(X_t)\,dt + \sigma\,dW_t, \qquad X_t \in \mathbb{R}^2" data-display></div>
+            <p>
+              The drift <span class="tex" data-tex="-\nabla\Psi"></span> pushes it downhill (<span class="tex" data-tex="\Psi>0"></span>: warm hills,
+              <span class="tex" data-tex="\Psi<0"></span>: cool valleys, <span class="tex" data-tex="|\Psi|"></span> capped at <span id="help-cap"></span>), and the Brownian
+              motion <span class="tex" data-tex="W_t"></span> with diffusivity <span class="tex" data-tex="\sigma"></span> shakes it. The law <span class="tex" data-tex="\rho_t"></span> of
+              <span class="tex" data-tex="X_t"></span> solves the Fokker&ndash;Planck equation
+            </p>
+            <div class="tex-display" data-tex="\partial_t \rho_t = \nabla\cdot\left(\rho_t\,\nabla\Psi\right) + \tfrac{\sigma^2}{2}\,\Delta\rho_t ." data-display></div>
+          </li>
+          <li>
+            <h3>The Gibbs measure</h3>
+            <p>Its stationary solution, where the drift and diffusion fluxes cancel, is the Gibbs measure</p>
+            <div class="tex-display" data-tex="\pi(x) = \frac{1}{Z}\, e^{-2\Psi(x)/\sigma^2}, \qquad Z = \int_B e^{-2\Psi(x)/\sigma^2}\,dx ." data-display></div>
+            <p>
+              Low <span class="tex" data-tex="\Psi"></span> means high probability, and <span class="tex" data-tex="\sigma^2/2"></span> plays the role of the temperature
+              <span class="tex" data-tex="k_B T"></span>. Wherever nothing is painted <span class="tex" data-tex="\Psi = 0"></span>, so <span class="tex" data-tex="Z"></span> would be infinite on the whole
+              plane. Everything is therefore restricted to the dashed <i>KL box</i> <span class="tex" data-tex="B"></span> and renormalised there.
+            </p>
+          </li>
+          <li>
+            <h3>The empirical measure</h3>
+            <p>The <span class="tex" data-tex="N"></span> particles are <span class="tex" data-tex="N"></span> independent samples of <span class="tex" data-tex="\rho_t"></span>. Together they form the empirical measure</p>
+            <div class="tex-display" data-tex="\mu_N^t = \frac{1}{N} \sum_{i=1}^{N} \delta_{X_t^i} ," data-display></div>
+            <p>
+              a sum of Dirac masses that converges weakly to <span class="tex" data-tex="\rho_t"></span> as <span class="tex" data-tex="N\to\infty"></span>. Being atomic it has
+              no density, so <span class="tex" data-tex="\int \mu \log \mu"></span> and hence <span class="tex" data-tex="\mathrm{KL}(\mu_N^t\,\|\,\pi)"></span> are undefined
+              (infinite).
+            </p>
+          </li>
+          <li>
+            <h3>Kernel smoothing</h3>
+            <p>Each Dirac mass is replaced by a Gaussian bump of standard deviation <span class="tex" data-tex="h"></span>:</p>
+            <div class="tex-display" data-tex="K_h(x) = \frac{1}{2\pi h^2}\, e^{-|x|^2/(2h^2)}, \qquad \hat\rho_h(x) = (\mu_N^t * K_h)(x) = \frac{1}{N}\sum_{i=1}^{N} K_h\!\left(x - X_t^i\right)." data-display></div>
+            <p>
+              The kernel variance <span class="tex" data-tex="h^2"></span> is set in the <i>KL to equilibrium</i> window. A small <span class="tex" data-tex="h"></span> gives a noisy
+              estimate (variance), a large <span class="tex" data-tex="h"></span> a blurred one (bias); a common rule of thumb is
+              <span class="tex" data-tex="h \approx \hat s\, N^{-1/6}"></span> in two dimensions, with <span class="tex" data-tex="\hat s"></span> the sample standard deviation.
+              The toggle in that window draws <span class="tex" data-tex="\hat\rho_h"></span> on the scene in pink.
+            </p>
+          </li>
+          <li>
+            <h3>Kullback&ndash;Leibler divergence</h3>
+            <p>The distance to equilibrium is the relative entropy</p>
+            <div class="tex-display" data-tex="\mathrm{KL}(\hat\rho_h\,\|\,\pi) = \int_B \hat\rho_h(x)\, \log\frac{\hat\rho_h(x)}{\pi(x)}\,dx \;\ge\; 0 ," data-display></div>
+            <p>
+              which is zero only if both densities agree. It is the natural Lyapunov functional of the dynamics: with the
+              free energy
+            </p>
+            <div class="tex-display" data-tex="F(\rho) = \int \Psi\,\rho\,dx + \tfrac{\sigma^2}{2} \int \rho \log\rho\,dx, \qquad F(\rho) - F(\pi) = \tfrac{\sigma^2}{2}\, \mathrm{KL}(\rho\,\|\,\pi)," data-display></div>
+            <p>and <span class="tex" data-tex="F(\rho_t)"></span> decreases along the Fokker&ndash;Planck flow until <span class="tex" data-tex="\rho_t = \pi"></span>.</p>
+          </li>
+          <li>
+            <h3>The smoothing floor</h3>
+            <p>Even perfect equilibrium samples do not give zero, because smoothing blurs them:</p>
+            <div class="tex-display" data-tex="\hat\rho_h \xrightarrow{\;N\to\infty\;} \rho_t * K_h, \qquad \text{at equilibrium: }\ \mathrm{KL}(\pi * K_h\,\|\,\pi) > 0 ." data-display></div>
+            <p>
+              This is the dashed line in the plot. By Jensen&rsquo;s inequality the expected estimate at equilibrium lies
+              above it; the remaining gap is finite-<span class="tex" data-tex="N"></span> noise. A curve that stays far above the line has not
+              equilibrated (metastable wells, flat regions, particles leaving the box).
+            </p>
+          </li>
+          <li>
+            <h3>How it is computed</h3>
+            <p>
+              <span class="tex" data-tex="B"></span> is covered by a grid of 64&ndash;256 cells per side (about 1.5 cells per <span class="tex" data-tex="h"></span>). Particles are
+              deposited with cloud-in-cell (bilinear) weights, blurred by a separable Gaussian and normalised to cell
+              probabilities <span class="tex" data-tex="p_c"></span>; the Gibbs probabilities <span class="tex" data-tex="q_c \propto e^{-2\Psi(c)/\sigma^2}"></span> use
+              log-sum-exp. The integral becomes the midpoint sum
+            </p>
+            <div class="tex-display" data-tex="\mathrm{KL}(\hat\rho_h\,\|\,\pi) \approx \sum_c p_c\,\bigl(\log p_c - \log q_c\bigr)," data-display></div>
+            <p>recomputed ten times per second (more while the density is shown).</p>
+          </li>
+          <li>
+            <h3>Numerical integration</h3>
+            <p>With <span class="tex" data-tex="\Delta W_n \sim \mathcal{N}(0, \Delta t\, I)"></span>, <i>Euler&ndash;Maruyama</i> uses one force evaluation per step,</p>
+            <div class="tex-display" data-tex="X_{n+1} = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W_n ," data-display></div>
+            <p><i>stochastic Heun</i> two (same <span class="tex" data-tex="\Delta W_n"></span> in both stages):</p>
+            <div class="tex-display" data-tex="\tilde X = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W_n, \qquad X_{n+1} = X_n - \tfrac12\bigl(\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\bigr)\Delta t + \sigma\,\Delta W_n ." data-display></div>
+            <p>
+              With additive noise both have strong order 1; Heun is second order in the drift. Sub-steps are
+              <span class="tex" data-tex="\Delta t \le 2"></span>&nbsp;ms of simulated time (up to 10&nbsp;ms under heavy load). <span class="tex" data-tex="\Psi"></span> lives on a
+              grid with spacing <span class="tex" data-tex="\Delta x = 0.04"></span>; its gradient uses central differences, interpolated bilinearly.
+            </p>
+          </li>
+        </ol>
+
+        <h2 class="help-section">Using the app</h2>
         <div class="help-grid">
           <section>
             <h3>Brush mode</h3>
             <ul>
-              <li><b>Hold left mouse</b> to raise Ψ</li>
-              <li><b>Hold right mouse</b> to lower Ψ</li>
+              <li><b>Hold left mouse</b> to raise Ψ (<span class="swatch hot"></span> warm)</li>
+              <li><b>Hold right mouse</b> to lower Ψ (<span class="swatch cold"></span> cool)</li>
+              <li>The <b>force field</b> toggle draws −∇Ψ as arrows</li>
               <li>The brush is a Gaussian: the circles show 1σ and 2σ</li>
             </ul>
           </section>
@@ -253,6 +342,14 @@
             </ul>
           </section>
           <section>
+            <h3>Analysis &amp; recording</h3>
+            <ul>
+              <li><b>KL to equilibrium</b> (left): live plot, kernel variance, box</li>
+              <li><b>Show ρ̂<sub>h</sub></b> draws the smoothed particle density in pink</li>
+              <li><b>Record button</b>: start / stop a run; downloads as <code>.npz</code> in the Recordings panel (right)</li>
+            </ul>
+          </section>
+          <section>
             <h3>Navigation</h3>
             <ul>
               <li><b>Hold mouse wheel + drag</b> to pan</li>
@@ -269,22 +366,13 @@
               <li><kbd>F</kbd> Force field −∇Ψ</li>
               <li><kbd>I</kbd> Image → Ψ · <kbd>⇧</kbd><kbd>I</kbd> Image → particles</li>
               <li><kbd>V</kbd> Live camera as Ψ</li>
+              <li><kbd>D</kbd> Show ρ̂<sub>h</sub> · <kbd>⇧</kbd><kbd>R</kbd> Record</li>
               <li><kbd>S</kbd> Switch numerical scheme</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
               <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>
             </ul>
           </section>
         </div>
-        <p class="fineprint">
-          <b>Numerical schemes.</b> <i>Euler–Maruyama</i>: X<sub>n+1</sub> = X<sub>n</sub> − ∇Ψ(X<sub>n</sub>)Δt + σΔW,
-          one force evaluation per step. <i>Stochastic Heun</i>: an Euler–Maruyama predictor X̃ followed by
-          X<sub>n+1</sub> = X<sub>n</sub> − ½[∇Ψ(X<sub>n</sub>) + ∇Ψ(X̃)]Δt + σΔW with the same ΔW, two force
-          evaluations per step. With additive noise both have strong order 1, but Heun is second order in the
-          drift (and reported weak order 2), so it is noticeably more accurate where the force dominates.
-          Sub-steps are 2&nbsp;ms of simulated time (up to 10&nbsp;ms when thousands of particles share the frame
-          budget). Ψ lives on a grid with spacing h = 0.04; its gradient uses central differences and is
-          interpolated continuously between grid nodes.
-        </p>
       </div>
     </div>
 

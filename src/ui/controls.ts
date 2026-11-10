@@ -177,7 +177,11 @@ export class Controls {
 
   setHelp(open: boolean): void {
     this.help.hidden = !open;
-    if (open) this.setMenu(false);
+    if (open) {
+      this.setMenu(false);
+      // KaTeX is loaded on first use only.
+      void import('./helpMath').then((m) => m.renderMath(this.help));
+    }
   }
 
   closeOverlays(): boolean {
