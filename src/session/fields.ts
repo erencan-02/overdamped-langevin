@@ -54,3 +54,19 @@ export class EnumField<V extends string> extends Field<V> {
     return this.values.includes(raw as V) ? (raw as V) : undefined;
   }
 }
+
+/** A string of bounded length that passes a validity check (e.g. a formula that parses). */
+export class StringField extends Field<string> {
+  constructor(
+    key: string,
+    readonly maxLength: number,
+    readonly valid: (v: string) => boolean = () => true,
+  ) {
+    super(key);
+  }
+
+  coerce(raw: unknown): string | undefined {
+    if (typeof raw !== 'string' || raw.length > this.maxLength || !this.valid(raw)) return undefined;
+    return raw;
+  }
+}

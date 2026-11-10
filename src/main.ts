@@ -12,6 +12,8 @@ import { KlPanel } from './ui/klPanel';
 import { RecordingsPanel } from './ui/recordingsPanel';
 import { InputController } from './ui/input';
 import { EquilibriumMonitor } from './analysis/equilibrium';
+import { ObservableMonitor } from './analysis/observable';
+import { ObservablePanel } from './ui/observablePanel';
 import { Recorder } from './record/recorder';
 import { ImageDropHandler, ImageImporter } from './image/importer';
 import { loadRecording, RecordingDropHandler } from './record/loader';
@@ -168,16 +170,31 @@ function main(): void {
 
   // Distance to equilibrium: KL between the kernel-smoothed particles and the Gibbs measure.
   const monitor = new EquilibriumMonitor(field, particles);
-  const klPanel = new KlPanel(monitor, {
-    fitBox: () => {
-      monitor.setBox(camera.bounds());
-      klPanel.draw();
+  // Both analyses work on the same box; fitting it to the view restarts both curves.
+  const fitBox = () => {
+    monitor.setBox(camera.bounds());
+    observables.reset();
+    klPanel.draw();
+    observablePanel.draw();
+  };
+  const klPanel = new KlPanel(monitor, { fitBox });
+
+  // Weak convergence: E[f(X_t)] for a test function typed in LaTeX, against ∫ f dπ.
+  const observables = new ObservableMonitor(field, particles, monitor);
+  const observablePanel = new ObservablePanel(observables, {
+    expression: () => state.observable,
+    setExpression: (tex) => {
+      state.observable = tex;
     },
+    fitBox,
   });
 
   // Everything that can be captured, restored and replayed (see src/session/). Settings that
   // change the simulation come first, then Ψ, particles, the analysis box and the view.
-  const syncUi = () => controls.sync();
+  const syncUi = () => {
+    controls.sync();
+    observablePanel.sync(); // e.g. the test function of a restored recording
+  };
   const session = new Session()
     .register(new PhysicsSettings(state, syncUi, particles, random))
     .register(new AnalysisSettings(state, syncUi))
@@ -200,7 +217,11 @@ function main(): void {
     },
     onFrame: (k, jumped) => {
       playerBar.setFrame(k);
-      if (jumped) monitor.reset(); // the KL curve restarts after a jump in time
+      if (jumped) {
+        // The analysis curves restart after a jump in time.
+        monitor.reset();
+        observables.reset();
+      }
     },
     onPlayingChange: (playing) => playerBar.setPlaying(playing),
     onExit: () => {
@@ -311,6 +332,8 @@ function main(): void {
       return;
     }
     if (controls.helpOpen && e.key !== '?') return;
+    // Typing in a text field (the test function, the seed) is not a shortcut.
+    if (target?.matches('input[type="text"], input[type="number"], textarea, [contenteditable="true"]')) return;
     switch (e.key) {
       case ' ':
         // Space would also "click" a focused button; take focus away and toggle once.
@@ -449,6 +472,12 @@ function main(): void {
       const region = monitor.region;
       if (recorder.recording && sample && region) recorder.addKl(particles.time, sample, region);
     }
+    observables.keepRunning = recorder.recording;
+    if (observables.update(now, state.sigma, state.kernelVariance)) {
+      observablePanel.draw();
+      const sample = observables.latest;
+      if (recorder.recording && sample) recorder.addObservable(particles.time, sample, state.observable);
+    }
     if (recorder.recording) {
       if (recorder.tick(now)) {
         controls.setRecording(false);
@@ -475,7 +504,7 @@ function main(): void {
       nextColor: PALETTE[input.nextColor],
       panning: input.panning,
       selection: input.selection,
-      analysisBox: monitor.active ? monitor.region : null,
+      analysisBox: monitor.active || observables.active ? monitor.region : null,
     });
 
     controls.setPanning(input.panning);
@@ -500,6 +529,7 @@ function main(): void {
       camera,
       liveCamera,
       monitor,
+      observables,
       recorder,
       session,
       playback,

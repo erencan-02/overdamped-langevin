@@ -47,6 +47,8 @@ export const DEFAULTS = {
   brushStrength: 6,
   particleSpacing: 0.5,
   kernelVariance: 0.09,
+  /** Test function of the observables window (LaTeX). */
+  observable: 'x^2 + y^2',
   scale: 64,
 } as const;
 

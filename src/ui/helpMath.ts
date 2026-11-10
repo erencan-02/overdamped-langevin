@@ -16,3 +16,8 @@ export function renderMath(root: ParentNode): void {
     el.dataset.rendered = '1';
   }
 }
+
+/** Renders one formula into `el` (inline style), replacing its content. */
+export function renderTex(el: HTMLElement, tex: string): void {
+  katex.render(tex, el, { throwOnError: false, output: 'htmlAndMathml' });
+}

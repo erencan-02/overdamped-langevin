@@ -7,6 +7,7 @@
   --surface: rgba(255, 255, 255, 0.86);
   --surface-solid: #ffffff;
   --hover: rgba(15, 23, 42, 0.05);
+  --danger: #dc2626;
   --active: rgba(15, 23, 42, 0.08);
   --accent: #0f172a;
   --hot: #ff9330;
@@ -747,7 +748,7 @@ input[type='range']:active::-webkit-slider-thumb {
   font-size: 11px;
   color: var(--ink-3);
 }
-#kl-plot {
+.ts-plot {
   display: block;
   width: 100%;
   height: 112px;
@@ -774,6 +775,79 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 .lg-dash {
   border-top: 2px dashed #3a9bdc;
+}
+.kl-legend i.lg-band {
+  height: 8px;
+  border-radius: 2px;
+  background: rgba(15, 23, 42, 0.12);
+}
+
+/* Observable: LaTeX input with inline validation */
+.obs-field {
+  gap: 5px;
+}
+.obs-field .field-note {
+  font-weight: 400;
+  font-size: 10.5px;
+}
+.obs-field input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.obs-field input:focus {
+  border-color: rgba(15, 23, 42, 0.35);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.06);
+}
+.obs-field input[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+.obs-error {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--danger);
+}
+.obs-error[hidden] {
+  display: none;
+}
+.obs-preview {
+  min-height: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 12.5px;
+  color: var(--ink);
+  scrollbar-width: none;
+}
+.obs-preview.stale {
+  opacity: 0.4;
+}
+.obs-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.obs-examples button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  color: var(--ink-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.obs-examples button:hover {
+  background: var(--hover);
+  color: var(--ink);
 }
 .kl-info {
   min-height: 14px;
@@ -1495,6 +1569,8 @@ body.in-playback .hint {
   .left-col {
     width: auto;
     right: var(--gutter);
+    /* Stay below the collapsed Recordings card (top 72 px, 42 px high) at the top right. */
+    max-height: calc(100vh - var(--gutter) - 124px);
   }
   .help-grid {
     grid-template-columns: 1fr;

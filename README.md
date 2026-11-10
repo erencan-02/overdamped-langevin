@@ -97,6 +97,16 @@ times per second while the window is open; π is only recomputed when Ψ, σ or 
 is $\mathrm{KL}(\pi * K_h \,\|\, \pi)$, the value that perfect sampling approaches as $N \to \infty$, so
 the curve should level off at or slightly above it (the excess is the finite-N noise).
 
+**Custom observables.** The *Observable* window above it takes a test function $f(x, y)$ typed in
+LaTeX (`x^2 + y^2`, `\mathbf{1}_{x>0}`, `\cos(\pi x)`, `rac{1}{2}\sigma^2 + \Psi`, …) and plots the mean
+of $f$ over the particles in the analysis box with a 95 % confidence band ($ar f \pm 1.96\, s/\sqrt n$)
+against the exact Gibbs expectation $\int_B f\,d\pi$ (a midpoint sum over ≥ 256 cells per side, recomputed
+only when f, Ψ, σ or the box change). This is the weak-convergence counterpart of the KL plot, and the
+remaining gap at equilibrium is the time-discretisation bias that the weak order of a scheme describes.
+The input is parsed by a small LaTeX parser (`src/analysis/latex.ts`) into a syntax tree and compiled to
+closures, never evaluated as code; errors such as a tuple (*output must be a scalar*) are shown under the
+input while the last valid function stays in use.
+
 **Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
 estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its
 maximum, a hue that appears nowhere in the colour map of Ψ. It uses the same grid as the KL estimate and is
@@ -133,6 +143,8 @@ k = 10
 ids, x, y = (run[a][off[k]:off[k + 1]] for a in ("particle_id", "x", "y"))
 psi = run["psi"]                                 # (snapshots, ny, nx) on psi_grid = [x0, y0, spacing]
 kl_t, kl, floor = run["kl_t"], run["kl"], run["kl_floor"]
+obs_t, mean, ci, exact = run["obs_t"], run["obs_mean"], run["obs_ci"], run["obs_exact"]
+f = meta["observable_expressions"]              # LaTeX of f; obs_expr indexes this list
 ```
 
 A run (format 2) also stores per frame the seed, the dynamics random state (`rng_state`), the clock
@@ -140,7 +152,8 @@ remainder and the next particle id, and the full settings in the metadata. It co
 positions (float64) with stable ids (frames at up to 20 Hz, whenever something
 changed), the simulated and wall-clock time of every frame, σ, speed, kernel variance, scheme and
 play state per frame, snapshots of Ψ on the lattice over the KL box (up to 5 Hz, whenever Ψ
-changed), and the KL time series with its floor, h, particle count and box. Recording stops by
+changed), the KL time series with its floor, h, particle count and box, and the observable
+time series (mean, CI half width, exact value, particle count and the LaTeX of f). Recording stops by
 itself at 400 MB of raw data; runs live in the browser tab until downloaded or deleted.
 
 **Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`

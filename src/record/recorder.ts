@@ -1,5 +1,6 @@
 import { CELL_SIZE, PALETTE, PALETTE_RGB, PSI_CAP } from '../config';
 import type { EquilibriumSample } from '../analysis/equilibrium';
+import type { ObservableSample } from '../analysis/observable';
 import type { Box } from '../analysis/kde';
 import type { PotentialField } from '../sim/field';
 import { DEFAULT_DT_MAX, MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
@@ -85,6 +86,16 @@ export class Run {
   readonly klInside: number[] = [];
   readonly klBox: number[] = [];
 
+  // Observable time series: E[f(X_t)] with its confidence interval and the exact value.
+  readonly obsT: number[] = [];
+  readonly obsMean: number[] = [];
+  readonly obsCi: number[] = [];
+  readonly obsExact: number[] = [];
+  readonly obsInside: number[] = [];
+  /** Index into `obsExpressions` of the test function of each sample. */
+  readonly obsExpr: number[] = [];
+  readonly obsExpressions: string[] = [];
+
   readonly startParams: RecordedParams;
   /** Full settings snapshot at the start (session groups: display, tools, view, …). */
   readonly startSettings: Record<string, unknown>;
@@ -149,6 +160,7 @@ export class Run {
     const f8 = (v: number[]): NpyArray => ({ dtype: '<f8', shape: [v.length], data: Float64Array.from(v) });
     const u1 = (v: number[]): NpyArray => ({ dtype: '|u1', shape: [v.length], data: Uint8Array.from(v) });
     const K = this.kl.length;
+    const O = this.obsT.length;
     const arrays: Record<string, NpyArray> = {
       t: f8(this.t),
       wall_time: f8(this.wall),
@@ -183,6 +195,12 @@ export class Run {
       kl_h: f8(this.klH),
       kl_inside: { dtype: '<i4', shape: [K], data: Int32Array.from(this.klInside) },
       kl_box: { dtype: '<f8', shape: [K, 4], data: Float64Array.from(this.klBox) },
+      obs_t: f8(this.obsT),
+      obs_mean: f8(this.obsMean),
+      obs_ci: f8(this.obsCi),
+      obs_exact: f8(this.obsExact),
+      obs_inside: { dtype: '<i4', shape: [O], data: Int32Array.from(this.obsInside) },
+      obs_expr: { dtype: '<i4', shape: [O], data: Int32Array.from(this.obsExpr) },
     };
     const metadata = {
       format: 'potential-sde-run',
@@ -193,6 +211,8 @@ export class Run {
       equation: 'dX_t = -grad Psi(X_t) dt + sigma dW_t',
       gibbs: 'pi(x) proportional to exp(-2 Psi(x) / sigma^2), restricted to the KL box',
       kl: 'KL(rho_h || pi) with rho_h = empirical measure * N(0, h^2 I), on the KL box; NaN = undefined',
+      observable: 'mean of f over the particles in the KL box, 95% CI half width 1.96 s / sqrt(n), exact = integral of f d(pi) on the box',
+      observable_expressions: this.obsExpressions,
       constants: {
         psi_cap: PSI_CAP,
         psi_lattice_spacing: CELL_SIZE,
@@ -233,6 +253,12 @@ export class Run {
         kl_h: 'kernel standard deviation h (K)',
         kl_inside: 'particles inside the KL box (K)',
         kl_box: 'KL box [x0, y0, x1, y1] (K x 4)',
+        obs_t: 'simulated time of each observable estimate (O)',
+        obs_mean: 'mean of f(X_i) over the particles in the box (O)',
+        obs_ci: 'half width of the 95% confidence interval of obs_mean (O)',
+        obs_exact: 'exact Gibbs expectation of f on the box (O)',
+        obs_inside: 'particles in the box at which f is defined (O)',
+        obs_expr: 'index into metadata.observable_expressions (LaTeX) of f, per estimate (O)',
       },
     };
     arrays.metadata = npyString(JSON.stringify(metadata, null, 2));
@@ -370,6 +396,21 @@ export class Recorder {
     run.klInside.push(s.inside);
     run.klBox.push(box.x0, box.y0, box.x1, box.y1);
     run.bytes += 56;
+  }
+
+  /** Adds an observable estimate (for the test function `tex`) to the current run. */
+  addObservable(t: number, s: ObservableSample, tex: string): void {
+    const run = this.current;
+    if (!run) return;
+    let k = run.obsExpressions.indexOf(tex);
+    if (k < 0) k = run.obsExpressions.push(tex) - 1;
+    run.obsT.push(t);
+    run.obsMean.push(s.mean);
+    run.obsCi.push(s.ci);
+    run.obsExact.push(s.exact);
+    run.obsInside.push(s.inside);
+    run.obsExpr.push(k);
+    run.bytes += 44;
   }
 }
 

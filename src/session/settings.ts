@@ -4,7 +4,8 @@ import type { RandomStreams } from '../sim/random';
 import { SCHEMES, type SchemeId } from '../sim/schemes';
 import type { AppState } from '../state';
 import { StateComponent } from './component';
-import { BooleanField, EnumField, type Field, IntegerField, NumberField } from './fields';
+import { parseFunction } from '../analysis/latex';
+import { BooleanField, EnumField, type Field, IntegerField, NumberField, StringField } from './fields';
 
 type Settings<K extends keyof AppState> = Partial<Pick<AppState, K>>;
 
@@ -81,9 +82,9 @@ export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
   }
 }
 
-type AnalysisKey = 'kernelVariance' | 'showDensity';
+type AnalysisKey = 'kernelVariance' | 'showDensity' | 'observable';
 
-/** Settings of the equilibrium analysis. */
+/** Settings of the equilibrium analysis and the observables window. */
 export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
   readonly key = 'analysis';
   override readonly order = 20;
@@ -92,6 +93,7 @@ export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
   protected readonly fields = [
     new NumberField('kernelVariance', ...RANGES.kernelVariance),
     new BooleanField('showDensity'),
+    new StringField('observable', 500, (tex) => parseFunction(tex).ok),
   ] as Field<AppState[AnalysisKey]>[];
 }
 

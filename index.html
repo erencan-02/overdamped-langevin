@@ -101,6 +101,50 @@
 
     <!-- Parameters -->
     <div class="left-col">
+      <!-- Custom observable: E[f(X_t)] against the Gibbs expectation -->
+      <section class="analysis card collapsed" id="observable" aria-label="Custom observable">
+        <button class="analysis-head" id="observable-toggle" type="button" aria-expanded="false" aria-controls="observable-body">
+          <span class="analysis-title">Observable 𝔼[f(X<sub>t</sub>)]</span>
+          <output id="obs-value"></output>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="analysis-body" id="observable-body" hidden>
+          <div class="field obs-field">
+            <label class="field-head" for="obs-input"><span>Test function f(x, y)</span><span class="field-note">LaTeX</span></label>
+            <input
+              type="text"
+              id="obs-input"
+              value="x^2 + y^2"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              aria-describedby="obs-error"
+            />
+            <div class="obs-error" id="obs-error" role="alert" hidden></div>
+            <div class="obs-preview" id="obs-preview" aria-hidden="true"></div>
+            <div class="obs-examples" role="group" aria-label="Examples">
+              <button type="button" data-tex="x">x</button>
+              <button type="button" data-tex="x^2 + y^2">r²</button>
+              <button type="button" data-tex="\mathbf{1}_{x > 0}">𝟏{x&gt;0}</button>
+              <button type="button" data-tex="\cos(\pi x)">cos πx</button>
+              <button type="button" data-tex="\Psi">Ψ</button>
+            </div>
+          </div>
+          <div class="kl-caption">Mean of f over the particles inside the dashed box, over simulated time</div>
+          <canvas id="obs-plot" class="ts-plot" aria-label="Expectation of f over time"></canvas>
+          <div class="kl-legend">
+            <span><i class="lg-line"></i>particle mean</span>
+            <span><i class="lg-band"></i>95 % CI</span>
+            <span><i class="lg-dash"></i>exact ∫ f dπ</span>
+          </div>
+          <div class="kl-info" id="obs-info"></div>
+          <div class="kl-actions">
+            <button class="ghost-btn" id="obs-fit" type="button">Fit box to view</button>
+            <button class="ghost-btn" id="obs-reset" type="button">Reset plot</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Distance to equilibrium -->
       <section class="analysis card" id="analysis" aria-label="Distance to equilibrium">
         <button class="analysis-head" id="analysis-toggle" type="button" aria-expanded="true" aria-controls="analysis-body">
@@ -110,7 +154,7 @@
         </button>
         <div class="analysis-body" id="analysis-body">
           <div class="kl-caption">KL(ρ̂<sub>h</sub> ‖ π) inside the dashed box, over simulated time</div>
-          <canvas id="kl-plot" aria-label="KL divergence over time"></canvas>
+          <canvas id="kl-plot" class="ts-plot" aria-label="KL divergence over time"></canvas>
           <div class="kl-legend">
             <span><i class="lg-line"></i>particles ∗ kernel vs Gibbs</span>
             <span><i class="lg-dash"></i>smoothing floor</span>
@@ -278,7 +322,7 @@
         <p class="lead">
           Paint a potential landscape <span class="tex" data-tex="\Psi"></span>, drop particles, and watch them follow an overdamped Langevin
           equation. The walkthrough below explains the mathematics behind the simulation and the
-          <i>KL to equilibrium</i> window; the controls come after it.
+          analysis windows (<i>Observable</i> and <i>KL to equilibrium</i>); the controls come after it.
         </p>
 
         <ol class="theory">
@@ -358,6 +402,33 @@
             <p>recomputed ten times per second (more while the density is shown).</p>
           </li>
           <li>
+            <h3>Observables and weak convergence</h3>
+            <p>
+              For a test function <span class="tex" data-tex="f(x, y)"></span> typed in the <i>Observable</i> window, the mean over the
+              <span class="tex" data-tex="n"></span> particles in <span class="tex" data-tex="B"></span> estimates its expectation, with a 95&nbsp;% confidence interval from the
+              central limit theorem (<span class="tex" data-tex="s_t"></span> is the sample standard deviation of the values):
+            </p>
+            <div class="tex-display" data-tex="\bar f_t = \frac{1}{n} \sum_{X_t^i \in B} f(X_t^i) \;\approx\; \mathbb{E}\bigl[f(X_t) \,\big|\, X_t \in B\bigr], \qquad \bar f_t \pm 1.96\,\frac{s_t}{\sqrt{n}} ." data-display></div>
+            <p>
+              Weak convergence <span class="tex" data-tex="\rho_t \rightharpoonup \pi"></span> means exactly that these expectations converge for every
+              bounded continuous <span class="tex" data-tex="f"></span>. The dashed line is the limit, the exact Gibbs expectation on the box, as a
+              midpoint sum over at least 256 cells per side:
+            </p>
+            <div class="tex-display" data-tex="\mathbb{E}\bigl[f(X_t) \,\big|\, X_t \in B\bigr] \xrightarrow{\;t\to\infty\;} \int_B f\,d\pi \approx \sum_c q_c\, f(c) ." data-display></div>
+            <p>
+              Unlike the KL estimate this needs no smoothing, so there is no floor: at equilibrium the band covers the
+              line, up to the bias of the time discretisation. That bias defines the <i>weak order</i>
+              <span class="tex" data-tex="p"></span> of a scheme, <span class="tex" data-tex="\bigl|\mathbb{E} f(X_n) - \mathbb{E} f(X_{n\Delta t})\bigr| = O(\Delta t^{p})"></span>,
+              which is 1 for Euler&ndash;Maruyama; for this additive-noise equation Heun is second order. At the small
+              steps used here it is far below the noise unless <span class="tex" data-tex="\Psi"></span> is very steep.
+            </p>
+            <p>
+              The input is standard LaTeX math: <span class="tex" data-tex="x, y, r, \theta"></span>, <span class="tex" data-tex="\Psi"></span> and
+              <span class="tex" data-tex="\sigma"></span>, <span class="tex" data-tex="\pi, e"></span>, <code>\frac</code>, <code>\sqrt</code>, powers, <code>|…|</code>, <code>\sin</code>
+              &hellip; <code>\exp</code>, <code>\ln</code>, <code>\max</code>, <code>\min</code> and indicators such as <code>\mathbf{1}_{x&gt;0}</code>.
+            </p>
+          </li>
+          <li>
             <h3>Numerical integration</h3>
             <p>With <span class="tex" data-tex="\Delta W_n \sim \mathcal{N}(0, \Delta t\, I)"></span>, <i>Euler&ndash;Maruyama</i> uses one force evaluation per step,</p>
             <div class="tex-display" data-tex="X_{n+1} = X_n - \nabla\Psi(X_n)\,\Delta t + \sigma\,\Delta W_n ," data-display></div>
@@ -403,6 +474,7 @@
           <section>
             <h3>Analysis &amp; recording</h3>
             <ul>
+              <li><b>Observable</b> (left): type a test function <i>f</i>(<i>x</i>, <i>y</i>) in LaTeX and compare the particle mean of <i>f</i> (with its 95&nbsp;% band) to the exact ∫ <i>f</i> dπ</li>
               <li><b>KL to equilibrium</b> (left): live plot, kernel variance, box</li>
               <li><b>Show ρ̂<sub>h</sub></b> draws the smoothed particle density in pink</li>
               <li><b>Record button</b>: start / stop a run; downloads as <code>.npz</code> in the Recordings panel (right)</li>
