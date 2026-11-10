@@ -35,6 +35,45 @@ void main() {
   gl_Position = vec4(worldToClip(p), 0.0, 1.0);
 }`;
 
+/**
+ * Colour of Ψ, shared by the 2D heat map and the 3D surface (scene3d.ts): the diverging colour
+ * map (white at 0, warm for Ψ > 0, cool for Ψ < 0, saturating at ±cap; sRGB) and, optionally,
+ * the iso-lines at Ψ = (k + ½)·cap/10. Iso-lines use screen-space derivatives, so they are about
+ * one pixel wide in any view. Must be called in uniform control flow (fwidth).
+ */
+export const PSI_COLOR_GLSL = /* glsl */ `
+const float PSI_P[${N}] = float[${N}](${glslFloats(COLORMAP.stops)});
+const vec3 PSI_HOT[${N}] = vec3[${N}](${glslColors(COLORMAP.hot)});
+const vec3 PSI_COLD[${N}] = vec3[${N}](${glslColors(COLORMAP.cold)});
+
+vec3 psiRamp(float t, bool hot) {
+  vec3 c = vec3(1.0);
+  for (int i = 0; i < ${N - 1}; i++) {
+    float a = PSI_P[i];
+    float b = PSI_P[i + 1];
+    if (t >= a) {
+      float s = clamp((t - a) / (b - a), 0.0, 1.0);
+      c = hot ? mix(PSI_HOT[i], PSI_HOT[i + 1], s) : mix(PSI_COLD[i], PSI_COLD[i + 1], s);
+    }
+  }
+  return c;
+}
+
+vec3 psiColor(float v, float cap, bool contours) {
+  float t = clamp(v / cap, -1.0, 1.0);
+  vec3 c = psiRamp(abs(t), t >= 0.0);
+  // Iso-lines at Ψ = (k + 1/2)·cap/10, so neither Ψ = 0 nor the capped plateau is a level.
+  float lv = v * 10.0 / cap;
+  float fw = fwidth(lv);
+  if (contours) {
+    float d = abs(fract(lv) - 0.5) / max(fw, 1e-6);
+    float line = (1.0 - smoothstep(0.5, 1.5, d)) * (1.0 - smoothstep(0.15, 0.45, fw));
+    c = mix(c, c * 0.78, line * 0.55);
+  }
+  return c;
+}
+`;
+
 export const FIELD_FS = /* glsl */ `#version 300 es
 precision highp float;
 uniform sampler2D u_tex;
@@ -42,40 +81,10 @@ uniform float u_cap;
 uniform float u_contours;   // 0 or 1
 in vec2 v_uv;
 out vec4 o_color;
-
-// Diverging colour map: white at 0, warm (yellow → orange → red) for Ψ > 0,
-// cool (mint → teal → blue → indigo → purple) for Ψ < 0.
-const float P[${N}] = float[${N}](${glslFloats(COLORMAP.stops)});
-const vec3 HOT[${N}] = vec3[${N}](${glslColors(COLORMAP.hot)});
-const vec3 COLD[${N}] = vec3[${N}](${glslColors(COLORMAP.cold)});
-
-vec3 ramp(float t, bool hot) {
-  vec3 c = vec3(1.0);
-  for (int i = 0; i < ${N - 1}; i++) {
-    float a = P[i];
-    float b = P[i + 1];
-    if (t >= a) {
-      float s = clamp((t - a) / (b - a), 0.0, 1.0);
-      c = hot ? mix(HOT[i], HOT[i + 1], s) : mix(COLD[i], COLD[i + 1], s);
-    }
-  }
-  return c;
-}
-
+${PSI_COLOR_GLSL}
 void main() {
   float v = texture(u_tex, v_uv).r;
-  float t = clamp(v / u_cap, -1.0, 1.0);
-  vec3 c = ramp(abs(t), t >= 0.0);
-
-  if (u_contours > 0.5) {
-    // Iso-lines at Ψ = (k + 1/2)·cap/10, so neither Ψ = 0 nor the capped plateau is a level.
-    float lv = v * 10.0 / u_cap;
-    float fw = fwidth(lv);
-    float d = abs(fract(lv) - 0.5) / max(fw, 1e-6);
-    float line = (1.0 - smoothstep(0.5, 1.5, d)) * (1.0 - smoothstep(0.15, 0.45, fw));
-    c = mix(c, c * 0.78, line * 0.55);
-  }
-  o_color = vec4(c, 1.0);
+  o_color = vec4(psiColor(v, u_cap, u_contours > 0.5), 1.0);
 }`;
 
 // ------------------------------------------------------------------ grid

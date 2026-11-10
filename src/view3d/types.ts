@@ -27,6 +27,7 @@ export interface Scene3DView {
   setRelief(r: number): void;
   setControlsEnabled(on: boolean): void;
   setGrid(on: boolean): void;
+  setContours(on: boolean): void;
   resize(w: number, h: number, dpr: number): void;
   render(nowMs: number): void;
 }

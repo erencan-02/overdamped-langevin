@@ -100,3 +100,27 @@ describe('PotentialField', () => {
     expect(f.epoch).toBe(1);
   });
 });
+
+describe('copyNodes', () => {
+  it('copies lattice values, across chunks, with stride, and zeros where nothing is allocated', () => {
+    const f = new PotentialField({ cellSize: 0.04, cap: 5 });
+    f.applyBrush(0, 0, 3, 1.2); // spans chunks around the origin (negative and positive indices)
+    f.applyBrush(6, 1, -2, 0.5); // chunk (1, 0)
+    for (const stride of [1, 3]) {
+      const i0 = -140;
+      const j0 = -70;
+      const nx = 120;
+      const ny = 60;
+      const out = new Float32Array(nx * ny);
+      f.copyNodes(i0, j0, nx, ny, stride, out);
+      for (let r = 0; r < ny; r += 7) {
+        for (let c = 0; c < nx; c += 5) {
+          expect(out[r * nx + c]).toBe(f.node(i0 + c * stride, j0 + r * stride));
+        }
+      }
+    }
+    const far = new Float32Array(4);
+    f.copyNodes(100000, 0, 2, 2, 1, far.fill(9));
+    expect(Array.from(far)).toEqual([0, 0, 0, 0]);
+  });
+});

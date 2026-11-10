@@ -110,7 +110,7 @@ export class ViewSwitch {
   }
 
   /** Call once per animation frame: advances a transition and draws the 3D view if visible. */
-  frame(nowMs: number, grid: boolean): void {
+  frame(nowMs: number, grid: boolean, contours: boolean): void {
     const scene = this.scene;
     const tr = this.transition;
     if (!scene) return;
@@ -132,6 +132,7 @@ export class ViewSwitch {
     }
     if (this.opacity > 0) {
       scene.setGrid(grid);
+      scene.setContours(contours);
       scene.render(nowMs);
     }
   }

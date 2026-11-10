@@ -242,6 +242,32 @@ export class PotentialField {
     return c ? c.psi[((j & CHUNK_MASK) << CHUNK_SHIFT) | (i & CHUNK_MASK)] : 0;
   }
 
+  /**
+   * Copies Ψ at the lattice nodes (i0 + c·stride, j0 + r·stride), c < nx, r < ny, into `out`
+   * (row-major, row 0 at j0). Nodes in unallocated chunks are 0. Looks up each chunk once per
+   * row, so copying a whole view is about as fast as copying the memory (used to upload Ψ to the
+   * GPU for the 3D view).
+   */
+  copyNodes(i0: number, j0: number, nx: number, ny: number, stride: number, out: Float32Array): void {
+    for (let r = 0; r < ny; r++) {
+      const j = j0 + r * stride;
+      const cy = j >> CHUNK_SHIFT;
+      const row = (j & CHUNK_MASK) << CHUNK_SHIFT;
+      const o = r * nx;
+      let cx = Number.NaN;
+      let psi: Float32Array | null = null;
+      for (let c = 0; c < nx; c++) {
+        const i = i0 + c * stride;
+        const ci = i >> CHUNK_SHIFT;
+        if (ci !== cx) {
+          cx = ci;
+          psi = this.getChunk(ci, cy)?.psi ?? null;
+        }
+        out[o + c] = psi ? psi[row | (i & CHUNK_MASK)] : 0;
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- sampling
 
   /** Bilinearly interpolated Ψ at world position (x, y). */

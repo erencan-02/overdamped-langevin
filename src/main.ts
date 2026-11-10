@@ -124,7 +124,7 @@ function main(): void {
       controls.sync();
     },
     toggleCamera() {
-      if (readOnly()) return;
+      // Allowed in 3D too: the camera image rises into a live relief.
       liveCamera.toggle();
     },
     toggleRecording() {
@@ -624,7 +624,7 @@ function main(): void {
         analysisBox: monitor.active || observables.active ? monitor.region : null,
       });
     }
-    viewSwitch.frame(now, state.grid);
+    viewSwitch.frame(now, state.grid, state.contours);
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
