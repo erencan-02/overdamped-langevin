@@ -110,7 +110,39 @@ export class ParticleSystem {
     this.version++;
   }
 
-  /** Index of the particle closest to (x, y) within maxDist, or −1. */
+  /**
+   * Replaces all particles at once (used when restoring a snapshot or playing back a
+   * recording). With `continueTrails`, and if the particles are the same ones in the same order,
+   * their trails are kept and the new positions are appended to them, so a played-back run still
+   * shows trails; otherwise trails start empty.
+   */
+  load(
+    p: { ids: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; colors: ArrayLike<number> },
+    continueTrails = false,
+  ): void {
+    const n = Math.min(p.ids.length, MAX_PARTICLES);
+    let same = continueTrails && n === this.count;
+    for (let i = 0; same && i < n; i++) same = this.id[i] === p.ids[i];
+    let maxId = -1;
+    for (let i = 0; i < n; i++) {
+      this.x[i] = p.x[i];
+      this.y[i] = p.y[i];
+      this.color[i] = p.colors[i];
+      this.id[i] = p.ids[i];
+      if (p.ids[i] > maxId) maxId = p.ids[i];
+    }
+    this.count = n;
+    this.nextId = Math.max(this.nextId, maxId + 1);
+    if (same) {
+      this.recordTrail();
+    } else {
+      this.trailCount.fill(0);
+      this.trailLayout++;
+    }
+    this.version++;
+  }
+
+    /** Index of the particle closest to (x, y) within maxDist, or −1. */
   nearest(x: number, y: number, maxDist: number): number {
     let best = -1;
     let bestD2 = maxDist * maxDist;
