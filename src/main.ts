@@ -44,25 +44,6 @@ import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
 
-/** Where the GPU choice is remembered (in this browser only). */
-const GPU_PREFERENCE = 'langevin-dynamics.gpu';
-
-function readGpuPreference(): boolean {
-  try {
-    return localStorage.getItem(GPU_PREFERENCE) !== 'off';
-  } catch {
-    return true; // storage blocked (private mode, …): use the GPU
-  }
-}
-
-function saveGpuPreference(on: boolean): void {
-  try {
-    localStorage.setItem(GPU_PREFERENCE, on ? 'on' : 'off');
-  } catch {
-    // Not remembered: the choice still holds for this visit.
-  }
-}
-
 function main(): void {
   const stage = document.getElementById('stage')!;
   const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -89,7 +70,9 @@ function main(): void {
   }
   const gpuInfo = detectGpu(renderer?.gl ?? null);
   const loseContext = renderer?.gl.getExtension('WEBGL_lose_context') ?? null;
-  state.gpu = gpuInfo.available && readGpuPreference();
+  // A hardware GPU is used from the start; with WebGL only emulated in software (or none),
+  // the CPU renderer starts instead. The GPU button switches at any time.
+  state.gpu = gpuInfo.available && gpuInfo.hardware;
   const cpuCanvas = document.createElement('canvas');
   cpuCanvas.id = 'cpu';
   cpuCanvas.hidden = true;
@@ -106,7 +89,7 @@ function main(): void {
   };
   /** The GPU draws now (allowed, and its context is alive). */
   const gpuReady = (): boolean => state.gpu && renderer !== null && !renderer.gl.isContextLost();
-  if (renderer && !state.gpu) loseContext?.loseContext(); // switched off in an earlier visit
+  if (renderer && !state.gpu) loseContext?.loseContext(); // software WebGL: start on the CPU
   /** The GPU button's tooltip: whether there is a GPU, which one, and whether it is used. */
   const gpuTip = (): string => {
     if (!gpuInfo.available) {
@@ -171,7 +154,6 @@ function main(): void {
       if (!gpuInfo.available) return;
       const on = !state.gpu;
       state.gpu = on;
-      saveGpuPreference(on);
       viewSwitch.setGpu(on); // without the GPU: 3D closes and releases its context
       if (on) {
         if (renderer?.gl.isContextLost()) loseContext?.restoreContext(); // → webglcontextrestored
@@ -348,6 +330,15 @@ function main(): void {
     setMode: (mode) => {
       if (mode === 'formula') liveCamera.stop(); // the camera paints the lattice
       session.apply({ physics: { potentialMode: mode } });
+    },
+    // ‖∇Ψ‖ over the analysis box; the key changes with Ψ (incl. time, for a formula) and the box.
+    gradientNorm: () => {
+      const b = monitor.box;
+      if (!b) return null;
+      return {
+        key: `${potential.revision}|${potential.epoch}|${b.x0},${b.y0},${b.x1},${b.y1}`,
+        compute: () => potential.gradientNormL2(b),
+      };
     },
     apply: (compiled) => {
       potential.setFormula(compiled);
@@ -667,6 +658,7 @@ function main(): void {
 
   // ---------------------------------------------------------------- sizing
 
+  let boxFromView = false;
   const resize = () => {
     const w = stage.clientWidth;
     const h = stage.clientHeight;
@@ -677,12 +669,17 @@ function main(): void {
     cpuRenderer?.resize(w, h, dpr);
     overlay.resize(w, h, dpr);
     viewSwitch.resize(w, h, dpr);
+    // The analysis box starts as the initial view: set once the stage has a real size (a page
+    // opened in a background tab is laid out with a 1-pixel stage at first).
+    if (!boxFromView && w > 1 && h > 1) {
+      boxFromView = true;
+      monitor.setBox(camera.bounds());
+    }
     controls.sync();
   };
   new ResizeObserver(resize).observe(stage);
   window.addEventListener('resize', resize);
   resize();
-  monitor.setBox(camera.bounds()); // the analysis box starts as the initial view
   document.fonts?.ready.then(() => controls.sync());
 
   // WebGL context loss (GPU reset, driver update, …): rebuild the renderer when restored.
@@ -733,6 +730,7 @@ function main(): void {
     }
 
     birthDeathPanel.update(now);
+    potentialPanel.update(now); // ‖∇Ψ‖, only while its window is open
 
     // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
     potential.setTime(particles.time, state.sigma);
@@ -786,7 +784,7 @@ function main(): void {
         nextColor: PALETTE[input.nextColor],
         panning: input.panning,
         selection: input.selection,
-        analysisBox: monitor.active || observables.active ? monitor.region : null,
+        analysisBox: monitor.active || observables.active || potentialPanel.open ? (monitor.region ?? monitor.box) : null,
       });
     }
     const glsl = potential.compiled?.glsl;

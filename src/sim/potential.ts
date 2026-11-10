@@ -21,6 +21,8 @@ interface Rect {
   y1: number;
 }
 
+/** The L² norm of a formula's gradient uses a midpoint grid with this many cells along the longer side. */
+const NORM_CELLS = 160;
 /** The display copy of a formula is sampled with at most this many points along the longer side. */
 const RASTER_SAMPLES = 220;
 /** It covers the view plus this fraction of its size on each side (the 3D view shows +35 %). */
@@ -131,6 +133,38 @@ export class Potential implements PotentialSampler {
     o.y[0] = y;
     this.formula.value(o.x, o.y, 1, this.t, this.sigma, o.v);
     return o.v[0];
+  }
+
+  /**
+   * ‖∇Ψ‖ in L² of the rectangle: √(∫ |∇Ψ|² dx). For the painted lattice the stored nodal
+   * gradients are summed; for a formula the exact gradient is evaluated in one batch on a
+   * midpoint grid (NORM_CELLS cells along the longer side). NaN if the formula's gradient is
+   * not finite somewhere on the grid.
+   */
+  gradientNormL2(box: Rect): number {
+    const w = box.x1 - box.x0;
+    const h = box.y1 - box.y0;
+    if (!(w > 0 && h > 0)) return 0;
+    const f = this.formula;
+    if (!f) return Math.sqrt(this.lattice.gradientSquaredIntegral(box.x0, box.y0, box.x1, box.y1));
+    const cell = Math.max(w, h) / NORM_CELLS;
+    const nx = Math.max(1, Math.round(w / cell));
+    const ny = Math.max(1, Math.round(h / cell));
+    const n = nx * ny;
+    const xs = new Float64Array(n);
+    const ys = new Float64Array(n);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        xs[j * nx + i] = box.x0 + ((i + 0.5) * w) / nx;
+        ys[j * nx + i] = box.y0 + ((j + 0.5) * h) / ny;
+      }
+    }
+    const gx = new Float64Array(n);
+    const gy = new Float64Array(n);
+    f.gradient(xs, ys, n, this.t, this.sigma, gx, gy);
+    let sum = 0;
+    for (let k = 0; k < n; k++) sum += gx[k] * gx[k] + gy[k] * gy[k];
+    return Math.sqrt((sum * w * h) / n);
   }
 
   samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void {

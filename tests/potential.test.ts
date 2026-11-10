@@ -134,3 +134,39 @@ describe('recordings with a formula potential', () => {
     expect(physics(t.frames - 1)).toMatchObject({ potentialMode: 'painted' });
   });
 });
+
+describe('L² norm of the gradient field', () => {
+  const box = { x0: -1, y0: -1, x1: 1, y1: 1 };
+
+  it('formula: matches the closed form (and follows time)', () => {
+    // Ψ = (x² + y²)/2: |∇Ψ|² = x² + y², ∫ over [−1, 1]² = 8/3.
+    expect(formulaPotential(String.raw`\frac{x^2 + y^2}{2}`).gradientNormL2(box)).toBeCloseTo(Math.sqrt(8 / 3), 3);
+    // Ψ = 3x − 4y: |∇Ψ| = 5 everywhere, so the norm is 5·√area = 10.
+    expect(formulaPotential('3x - 4y').gradientNormL2(box)).toBeCloseTo(10, 10);
+    // Ψ = x cos t: |∇Ψ| = |cos t|.
+    const p = formulaPotential(String.raw`x \cos t`);
+    p.setTime(0, 0.6);
+    expect(p.gradientNormL2(box)).toBeCloseTo(2, 10);
+    p.setTime(Math.PI / 3, 0.6);
+    expect(p.gradientNormL2(box)).toBeCloseTo(1, 10);
+  });
+
+  it('painted lattice: sums the stored nodal gradients', () => {
+    const field = new PotentialField({ cellSize: 0.04, cap: 5 });
+    const p = new Potential(field);
+    expect(p.gradientNormL2(box)).toBe(0); // nothing painted
+    // A linear ramp Ψ = x/2 on a larger square: inside the box ∇Ψ = (½, 0), norm = ½·√4 = 1.
+    field.addFunction(-3, -3, 3, 3, (x) => x / 2);
+    expect(p.gradientNormL2(box)).toBeCloseTo(1, 6);
+    // It matches a direct sum of |∇Ψ|² over the lattice nodes of the box.
+    const g = new Float64Array(2);
+    let sum = 0;
+    for (let j = -25; j < 25; j++) {
+      for (let i = -25; i < 25; i++) {
+        field.gradient(i * 0.04, j * 0.04, g);
+        sum += g[0] * g[0] + g[1] * g[1];
+      }
+    }
+    expect(p.gradientNormL2(box)).toBeCloseTo(Math.sqrt(sum * 0.04 * 0.04), 10);
+  });
+});

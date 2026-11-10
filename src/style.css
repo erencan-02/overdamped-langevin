@@ -1656,10 +1656,14 @@ body.in-playback .hint {
   /* Narrow phones (360 px): tighter toolbar so all buttons fit. */
   .toolbar {
     gap: 1px;
-    max-width: calc(100vw - 16px);
+    padding: 5px 3px;
+    max-width: calc(100vw - 8px);
   }
   .icon-btn {
     width: 22px;
+  }
+  .icon-btn.gpu-btn {
+    padding: 0 4px;
   }
   .divider {
     display: none;

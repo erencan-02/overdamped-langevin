@@ -274,6 +274,44 @@ export class PotentialField {
 
   // ---------------------------------------------------------------- sampling
 
+  /**
+   * ∫ |∇Ψ|² over the world rectangle, as a sum over the lattice nodes inside it (each node
+   * stands for a cell of area h²). The nodal gradients are stored, so this only adds up the
+   * chunks' arrays; unallocated chunks contribute nothing.
+   */
+  gradientSquaredIntegral(x0: number, y0: number, x1: number, y1: number): number {
+    const i0 = Math.ceil(x0 * this.invH);
+    const i1 = Math.ceil(x1 * this.invH) - 1; // nodes with x0 ≤ i·h < x1
+    const j0 = Math.ceil(y0 * this.invH);
+    const j1 = Math.ceil(y1 * this.invH) - 1;
+    if (i1 < i0 || j1 < j0) return 0;
+    let sum = 0;
+    for (let cy = j0 >> CHUNK_SHIFT; cy <= j1 >> CHUNK_SHIFT; cy++) {
+      for (let cx = i0 >> CHUNK_SHIFT; cx <= i1 >> CHUNK_SHIFT; cx++) {
+        const c = this.getChunk(cx, cy);
+        if (!c) continue;
+        const { gx, gy } = c;
+        const baseI = cx << CHUNK_SHIFT;
+        const baseJ = cy << CHUNK_SHIFT;
+        const la = Math.max(i0 - baseI, 0);
+        const lb = Math.min(i1 - baseI, CHUNK_MASK);
+        const ma = Math.max(j0 - baseJ, 0);
+        const mb = Math.min(j1 - baseJ, CHUNK_MASK);
+        let part = 0; // per chunk, so small terms are not lost against a large total
+        for (let m = ma; m <= mb; m++) {
+          const row = m << CHUNK_SHIFT;
+          for (let l = la; l <= lb; l++) {
+            const a = gx[row | l];
+            const b = gy[row | l];
+            part += a * a + b * b;
+          }
+        }
+        sum += part;
+      }
+    }
+    return sum * this.h * this.h;
+  }
+
   /** Ψ at n points into `out` (bilinear, as `sample`). */
   samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void {
     for (let i = 0; i < n; i++) out[i] = this.sample(xs[i], ys[i]);
