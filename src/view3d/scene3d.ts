@@ -407,6 +407,17 @@ export class Scene3D implements Scene3DView {
     this.camera.updateProjectionMatrix();
   }
 
+  dispose(): void {
+    this.controls.dispose();
+    this.surface.geometry.dispose();
+    this.outline.geometry.dispose();
+    for (const l of this.gridLines) l.geometry.dispose();
+    for (const r of this.rings) r.geometry.dispose();
+    this.dots.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss(); // give the GPU context back now, not when collected
+  }
+
   render(_nowMs: number): void {
     this.height.update(); // uploads Ψ only when it changed
     this.updateParticles();

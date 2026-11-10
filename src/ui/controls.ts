@@ -11,6 +11,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 export interface ControlActions {
   setMode(mode: Mode): void;
   setView(view: ViewKind): void;
+  toggleGpu(): void;
   setScheme(id: SchemeId): void;
   setSeed(seed: number): void;
   openRecording(): void;
@@ -73,6 +74,7 @@ export class Controls {
     for (const b of this.viewButtons) {
       b.addEventListener('click', () => actions.setView(b.dataset.view as ViewKind));
     }
+    $('toggle-gpu').addEventListener('click', () => actions.toggleGpu());
     for (const b of this.schemeButtons) {
       b.addEventListener('click', () => actions.setScheme(b.dataset.scheme as SchemeId));
     }
@@ -263,6 +265,13 @@ export class Controls {
     for (const b of this.segButtons) b.setAttribute('aria-checked', String(b.dataset.mode === s.mode));
     this.placeThumbs();
     for (const b of this.viewButtons) b.setAttribute('aria-checked', String(b.dataset.view === s.view));
+    $('toggle-gpu').setAttribute('aria-pressed', String(s.gpu));
+    // The 3D view needs the GPU.
+    const view3d = this.viewButtons.find((b) => b.dataset.view === '3d');
+    if (view3d) {
+      view3d.disabled = !s.gpu;
+      view3d.dataset.tip = s.gpu ? '3D view' : '3D view needs the GPU';
+    }
     for (const el of document.querySelectorAll<HTMLElement>('.mode-only')) {
       el.hidden = el.dataset.for !== s.mode;
     }
@@ -292,6 +301,14 @@ export class Controls {
   }
 
   /** Reflects the recording state in the toolbar button. */
+  /** Describes the GPU in the GPU button's tooltip; without any GPU the button is disabled. */
+  setGpuInfo(available: boolean, tip: string): void {
+    const b = $<HTMLButtonElement>('toggle-gpu');
+    b.disabled = !available;
+    b.dataset.tip = tip;
+    b.setAttribute('aria-label', tip);
+  }
+
   /** In playback mode the simulation clock and the recorder are off. */
   setPlaybackLock(on: boolean): void {
     for (const id of ['play', 'toggle-record']) {

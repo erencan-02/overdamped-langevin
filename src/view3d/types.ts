@@ -61,4 +61,6 @@ export interface Scene3DView {
   setCursor(c: Cursor3D | null): void;
   resize(w: number, h: number, dpr: number): void;
   render(nowMs: number): void;
+  /** Releases everything, including the WebGL context (the scene cannot be used afterwards). */
+  dispose(): void;
 }

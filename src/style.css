@@ -76,7 +76,7 @@ button {
 .stage[data-mode='particles'] canvas.view3d {
   cursor: crosshair;
 }
-.stage canvas.view3d[hidden] {
+.stage canvas[hidden] {
   display: none;
 }
 
@@ -317,6 +317,33 @@ input:focus-visible {
 }
 .menu-wrap:has(.menu:not([hidden])) [data-tip]::after {
   display: none;
+}
+/* GPU on/off: a text button; its tooltip (which GPU, if any) is long, so it wraps and ends at
+   the button's right edge instead of running off the screen. */
+.icon-btn.gpu-btn {
+  width: auto;
+  padding: 0 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.gpu-btn[aria-pressed='false'] {
+  color: var(--ink-4);
+  text-decoration: line-through;
+}
+.gpu-btn[data-tip]::after {
+  left: auto;
+  right: 0;
+  transform: translate(0, -4px);
+  width: max-content;
+  max-width: 270px;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+}
+.gpu-btn[data-tip]:hover::after {
+  transform: translate(0, 0);
 }
 
 /* ------------------------------------------------------------------ menu */

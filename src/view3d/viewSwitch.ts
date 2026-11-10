@@ -69,6 +69,8 @@ export class ViewSwitch {
   private relief = 0;
   private opacity = 0;
   private size = { w: 1, h: 1, dpr: 1 };
+  /** The GPU may be used (the 3D view needs it). */
+  private gpu = true;
 
   constructor(
     private readonly container: HTMLElement,
@@ -111,8 +113,33 @@ export class ViewSwitch {
     this.set(this.mode === '2d' ? '3d' : '2d');
   }
 
+  /**
+   * Allows or forbids the GPU. Without it the 3D view is closed at once (no transition) and its
+   * WebGL context released; switching to 3D is refused until the GPU is allowed again.
+   */
+  setGpu(allowed: boolean): void {
+    this.gpu = allowed;
+    if (allowed) return;
+    const wasIn3D = this.mode === '3d';
+    this.mode = '2d';
+    this.transition = null;
+    this.opacity = 0;
+    this.relief = 0;
+    if (this.scene) {
+      this.scene.canvas.remove();
+      this.scene.dispose();
+    }
+    this.scene = null;
+    this.loading = null; // a load in progress is dropped when it finishes (see load)
+    if (wasIn3D) this.hooks.onModeChange('2d');
+  }
+
   set(mode: ViewMode): void {
     if (mode === this.mode) return;
+    if (mode === '3d' && !this.gpu) {
+      this.hooks.onError('The 3D view needs the GPU. Turn it on with the GPU button.');
+      return;
+    }
     this.mode = mode;
     this.hooks.onModeChange(mode);
     if (mode === '3d') void this.enter3D();
@@ -216,6 +243,7 @@ export class ViewSwitch {
     if (this.scene) return Promise.resolve(this.scene);
     this.loading ??= import('./scene3d')
       .then(({ Scene3D }) => {
+        if (!this.gpu) return null; // the GPU was switched off while loading
         const scene = new Scene3D(this.field, this.particles);
         const c = scene.canvas;
         c.className = 'view3d';

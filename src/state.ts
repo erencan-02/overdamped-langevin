@@ -36,6 +36,8 @@ export interface AppState {
   showDensity: boolean;
   /** 2D or 3D view (a viewing choice: not saved in recordings). */
   view: ViewKind;
+  /** Draw with the GPU (WebGL); off: with the CPU, and no 3D view. A viewing choice. */
+  gpu: boolean;
   /** Where Ψ comes from. */
   potentialMode: PotentialMode;
   /** The formula Ψ(t, x, y) in LaTeX (used in 'formula' mode; always a valid expression). */
@@ -66,6 +68,7 @@ export function initialState(): AppState {
     kernelVariance: DEFAULTS.kernelVariance,
     showDensity: false,
     view: '2d',
+    gpu: true,
     potentialMode: 'painted',
     potentialTex: DEFAULTS.potential,
     birthDeath: false,

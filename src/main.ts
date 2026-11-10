@@ -1,5 +1,7 @@
 import './style.css';
 import { CELL_SIZE, PALETTE, PSI_CAP } from './config';
+import { CpuRenderer } from './render/cpuRenderer';
+import { detectGpu } from './render/gpuInfo';
 import { Renderer } from './render/renderer';
 import { PotentialField } from './sim/field';
 import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES, ParticleSystem } from './sim/particles';
@@ -42,11 +44,22 @@ import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
 
-function fatal(message: string): void {
-  const el = document.getElementById('fatal');
-  if (el) {
-    el.textContent = message;
-    el.hidden = false;
+/** Where the GPU choice is remembered (in this browser only). */
+const GPU_PREFERENCE = 'langevin-dynamics.gpu';
+
+function readGpuPreference(): boolean {
+  try {
+    return localStorage.getItem(GPU_PREFERENCE) !== 'off';
+  } catch {
+    return true; // storage blocked (private mode, …): use the GPU
+  }
+}
+
+function saveGpuPreference(on: boolean): void {
+  try {
+    localStorage.setItem(GPU_PREFERENCE, on ? 'on' : 'off');
+  } catch {
+    // Not remembered: the choice still holds for this visit.
   }
 }
 
@@ -65,14 +78,46 @@ function main(): void {
   // Undo/redo of brush strokes and other changes of Ψ, and of added/removed particles.
   const history = new UndoHistory(field, particles);
 
-  let renderer: Renderer;
+  // Drawing: WebGL2 on the GPU, or Canvas 2D on the CPU (without WebGL2, or with the GPU switched
+  // off by the GPU button). Switching off releases the WebGL context, so the app then holds no
+  // GPU resources at all; switching on restores it.
+  let renderer: Renderer | null = null;
   try {
     renderer = new Renderer(glCanvas);
   } catch (err) {
-    fatal('This simulator needs WebGL2, which your browser or device does not provide.');
-    console.error(err);
-    return;
+    console.warn('WebGL2 is not available: drawing on the CPU.', err);
   }
+  const gpuInfo = detectGpu(renderer?.gl ?? null);
+  const loseContext = renderer?.gl.getExtension('WEBGL_lose_context') ?? null;
+  state.gpu = gpuInfo.available && readGpuPreference();
+  const cpuCanvas = document.createElement('canvas');
+  cpuCanvas.id = 'cpu';
+  cpuCanvas.hidden = true;
+  glCanvas.after(cpuCanvas);
+  let cpuRenderer: CpuRenderer | null = null;
+  let viewSize = { w: 1, h: 1, dpr: 1 };
+  /** The CPU renderer (created the first time it is needed). */
+  const cpu = (): CpuRenderer => {
+    if (!cpuRenderer) {
+      cpuRenderer = new CpuRenderer(cpuCanvas);
+      cpuRenderer.resize(viewSize.w, viewSize.h, viewSize.dpr);
+    }
+    return cpuRenderer;
+  };
+  /** The GPU draws now (allowed, and its context is alive). */
+  const gpuReady = (): boolean => state.gpu && renderer !== null && !renderer.gl.isContextLost();
+  if (renderer && !state.gpu) loseContext?.loseContext(); // switched off in an earlier visit
+  /** The GPU button's tooltip: whether there is a GPU, which one, and whether it is used. */
+  const gpuTip = (): string => {
+    if (!gpuInfo.available) {
+      return 'No GPU available: this browser offers no WebGL2, so everything is drawn on the CPU (no 3D view)';
+    }
+    const model = gpuInfo.name ?? 'model not reported by the browser';
+    const what = gpuInfo.hardware ? `GPU available: ${model}` : `No hardware GPU: WebGL runs in software (${model})`;
+    return state.gpu
+      ? `${what} · in use · click to draw on the CPU instead`
+      : `GPU off: drawing on the CPU (no 3D view) · ${what} · click to use it`;
+  };
   const overlay = new Overlay(overlayCanvas);
   const input = new InputController(stage, camera, field, particles, state, random, history);
   // Ψ for the simulation, the analysis and the pictures: the painted lattice or a formula.
@@ -121,6 +166,23 @@ function main(): void {
     },
     setView(view: ViewKind) {
       viewSwitch.set(view);
+    },
+    toggleGpu() {
+      if (!gpuInfo.available) return;
+      const on = !state.gpu;
+      state.gpu = on;
+      saveGpuPreference(on);
+      viewSwitch.setGpu(on); // without the GPU: 3D closes and releases its context
+      if (on) {
+        if (renderer?.gl.isContextLost()) loseContext?.restoreContext(); // → webglcontextrestored
+        formulaOnGpu = useFormulaOnGpu();
+      } else {
+        formulaOnGpu = false; // a formula is drawn from the CPU now
+        loseContext?.loseContext();
+      }
+      controls.setGpuInfo(gpuInfo.available, gpuTip());
+      controls.sync();
+      controls.showToast(on ? 'GPU on' : 'GPU off: everything is drawn on the CPU');
     },
     setScheme(id: SchemeId) {
       if (id === state.scheme) return;
@@ -218,6 +280,8 @@ function main(): void {
     },
   };
   const controls = new Controls(state, actions);
+  controls.setGpuInfo(gpuInfo.available, gpuTip());
+  viewSwitch.setGpu(state.gpu); // no 3D view without the GPU
   // The settings card collapses like the analysis windows (open at start).
   new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {}).setOpen(true);
   // Formulas in the side panels (ρ̂_h in the KL window) are typeset with KaTeX, which is loaded
@@ -298,6 +362,7 @@ function main(): void {
   let formulaOnGpu = false;
   const useFormulaOnGpu = (): boolean => {
     const f = potential.compiled;
+    if (!renderer || !gpuReady()) return false; // drawn from the CPU (restored later if the GPU comes back)
     if (!f?.glsl) return renderer.setFormula(null);
     return renderer.setFormula({ glsl: f.glsl, exact: (xs, ys, n, t, sigma, out) => f.value(xs, ys, n, t, sigma, out) });
   };
@@ -607,7 +672,9 @@ function main(): void {
     const h = stage.clientHeight;
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     camera.setViewport(w, h);
-    renderer.resize(w, h, dpr);
+    viewSize = { w, h, dpr };
+    renderer?.resize(w, h, dpr);
+    cpuRenderer?.resize(w, h, dpr);
     overlay.resize(w, h, dpr);
     viewSwitch.resize(w, h, dpr);
     controls.sync();
@@ -621,6 +688,10 @@ function main(): void {
   // WebGL context loss (GPU reset, driver update, …): rebuild the renderer when restored.
   glCanvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
   glCanvas.addEventListener('webglcontextrestored', () => {
+    if (!state.gpu) {
+      loseContext?.loseContext(); // restored by the browser while the GPU is switched off
+      return;
+    }
     try {
       renderer = new Renderer(glCanvas);
       formulaOnGpu = useFormulaOnGpu(); // the new context needs the formula's shader again
@@ -690,19 +761,22 @@ function main(): void {
       recordings.renderLive(now);
     }
 
-    // The 2D view is not drawn while the 3D view covers it completely.
+    // The 2D view is not drawn while the 3D view covers it completely. It is drawn by the GPU,
+    // or by the CPU (no WebGL2, GPU switched off, or the GPU context not back yet).
+    const onGpu = gpuReady();
+    if (glCanvas.hidden === onGpu) glCanvas.hidden = !onGpu;
+    if (cpuCanvas.hidden !== onGpu) cpuCanvas.hidden = onGpu;
     if (viewSwitch.show2D) {
-      if (!renderer.gl.isContextLost()) {
-        renderer.render(camera, potential.display, particles, {
-          grid: state.grid,
-          trails: state.trails,
-          contours: state.contours,
-          forceField: state.forceField,
-          arrows: potential.analytic ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch } : undefined,
-          formula: potential.analytic && formulaOnGpu ? { t: particles.time, sigma: state.sigma } : undefined,
-          density: state.showDensity ? monitor.density : null,
-        });
-      }
+      const drawer = onGpu ? renderer! : cpu();
+      drawer.render(camera, potential.display, particles, {
+        grid: state.grid,
+        trails: state.trails,
+        contours: state.contours,
+        forceField: state.forceField,
+        arrows: potential.analytic ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch } : undefined,
+        formula: potential.analytic && formulaOnGpu && onGpu ? { t: particles.time, sigma: state.sigma } : undefined,
+        density: state.showDensity ? monitor.density : null,
+      });
       overlay.draw(camera, {
         grid: state.grid,
         mode: state.mode,
