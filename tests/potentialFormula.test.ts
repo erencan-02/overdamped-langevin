@@ -108,3 +108,26 @@ describe('compiler safety', () => {
     for (let i = 0; i < n; i++) expect(p.v[i]).toBeCloseTo(Math.exp(-(X[i] ** 2 + Y[i] ** 2)), 12);
   });
 });
+
+describe('GLSL for the GPU', () => {
+  it('every example potential has a GLSL form for the shaders', async () => {
+    const { psiFormulaGlsl, formulaFieldFs } = await import('../src/render/formulaShader');
+    // The example buttons of the Potential window.
+    const examples = [
+      String.raw`\frac{x^2 + y^2}{2}`,
+      String.raw`\frac{(x^2 - 4)^2}{16} + \frac{y^2}{2}`,
+      String.raw`\frac{(r^2 - 4)^2}{16}`,
+      String.raw`-\cos(2x)\cos(2y) + \frac{r^2}{20}`,
+      String.raw`\frac{(x - 2\cos t)^2 + (y - 2\sin t)^2}{2}`,
+      String.raw`\frac{(x^2 - 4)^2}{16} + \frac{y^2}{2} + \frac{x \sin t}{2}`,
+    ];
+    for (const tex of examples) {
+      const g = potential(tex).glsl;
+      expect(g, tex).not.toBeNull();
+      const fn = psiFormulaGlsl(g!);
+      expect(fn).toContain('float psiFormula(float x, float y, float t, float sigma)');
+      expect(fn).toContain(g!.code);
+      expect(formulaFieldFs(g!)).toContain('psiColor(');
+    }
+  });
+});

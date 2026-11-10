@@ -78,6 +78,11 @@ export class Potential implements PotentialSampler {
     return this.formula !== null;
   }
 
+  /** The formula in use (null: the painted lattice). */
+  get compiled(): CompiledPotential | null {
+    return this.formula;
+  }
+
   get timeDependent(): boolean {
     return this.formula?.timeDependent ?? false;
   }

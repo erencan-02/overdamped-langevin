@@ -280,8 +280,22 @@ function main(): void {
       if (mode === 'formula') liveCamera.stop(); // the camera paints the lattice
       session.apply({ physics: { potentialMode: mode } });
     },
-    apply: (compiled) => potential.setFormula(compiled),
+    apply: (compiled) => {
+      potential.setFormula(compiled);
+      formulaOnGpu = useFormulaOnGpu();
+    },
   });
+  /**
+   * A formula is drawn by the GPU (2D heat map and 3D relief, evaluated per pixel and per vertex)
+   * when its GLSL passes the renderer's check against the exact values; otherwise from the CPU
+   * through the display lattice.
+   */
+  let formulaOnGpu = false;
+  const useFormulaOnGpu = (): boolean => {
+    const f = potential.compiled;
+    if (!f?.glsl) return renderer.setFormula(null);
+    return renderer.setFormula({ glsl: f.glsl, exact: (xs, ys, n, t, sigma, out) => f.value(xs, ys, n, t, sigma, out) });
+  };
 
   const syncUi = () => {
     controls.sync();
@@ -590,6 +604,7 @@ function main(): void {
   glCanvas.addEventListener('webglcontextrestored', () => {
     try {
       renderer = new Renderer(glCanvas);
+      formulaOnGpu = useFormulaOnGpu(); // the new context needs the formula's shader again
       resize();
     } catch (err) {
       console.error(err);
@@ -629,7 +644,8 @@ function main(): void {
 
     // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
     potential.setTime(particles.time, state.sigma);
-    potential.updateDisplay(camera.bounds(), now);
+    // Only a formula drawn from the CPU needs the display lattice (redrawn when the view moves).
+    if (potential.analytic && !formulaOnGpu) potential.updateDisplay(camera.bounds(), now);
 
     // Analysis first, so that the density drawn below belongs to this frame's particles.
     monitor.keepRunning = recorder.recording || state.showDensity;
@@ -662,6 +678,7 @@ function main(): void {
           contours: state.contours,
           forceField: state.forceField,
           arrows: potential.analytic ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch } : undefined,
+          formula: potential.analytic && formulaOnGpu ? { t: particles.time, sigma: state.sigma } : undefined,
           density: state.showDensity ? monitor.density : null,
         });
       }
@@ -677,7 +694,13 @@ function main(): void {
         analysisBox: monitor.active || observables.active ? monitor.region : null,
       });
     }
-    viewSwitch.frame(now, state.grid, state.contours);
+    const glsl = potential.compiled?.glsl;
+    viewSwitch.frame(
+      now,
+      state.grid,
+      state.contours,
+      formulaOnGpu && glsl ? { glsl, t: particles.time, sigma: state.sigma, heights: potential } : null,
+    );
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);

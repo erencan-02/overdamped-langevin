@@ -47,6 +47,8 @@ export function buildArrows(
   bounds: { x0: number; y0: number; x1: number; y1: number },
   scale: number,
   out: Float32Array,
+  /** Time for drifts that depend on it (batched drifts only). */
+  t = 0,
 ): { data: Float32Array; count: number } {
   const sp = arrowSpacing(scale);
   const i0 = Math.floor(bounds.x0 / sp) - 1;
@@ -57,13 +59,39 @@ export function buildArrows(
   let data = out;
   if (data.length < needed) data = new Float32Array(Math.ceil(needed * 1.5));
 
+  // A batched drift (a formula) is evaluated for all arrows in one call.
+  const nx = i1 - i0 + 1;
+  const ny = j1 - j0 + 1;
+  let gxs: Float64Array | null = null;
+  let gys: Float64Array | null = null;
+  if (field.gradientBatch) {
+    const n = nx * ny;
+    const xs = new Float64Array(n);
+    const ys = new Float64Array(n);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        xs[j * nx + i] = (i0 + i) * sp;
+        ys[j * nx + i] = (j0 + j) * sp;
+      }
+    }
+    gxs = new Float64Array(n);
+    gys = new Float64Array(n);
+    field.gradientBatch(xs, ys, n, t, gxs, gys);
+  }
+
   const g = new Float64Array(2);
   let w = 0;
   for (let j = j0; j <= j1; j++) {
     const wy = j * sp;
     for (let i = i0; i <= i1; i++) {
       const wx = i * sp;
-      field.gradient(wx, wy, g);
+      if (gxs && gys) {
+        const k = (j - j0) * nx + (i - i0);
+        g[0] = gxs[k];
+        g[1] = gys[k];
+      } else {
+        field.gradient(wx, wy, g);
+      }
       const fx = -g[0];
       const fy = -g[1];
       const m = Math.hypot(fx, fy);

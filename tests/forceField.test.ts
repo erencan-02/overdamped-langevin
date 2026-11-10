@@ -80,3 +80,30 @@ describe('force field arrows', () => {
     expect(shared).toBeGreaterThan(0.6 * Math.min(pa.size, pb.size));
   });
 });
+
+describe('force arrows from a batched drift', () => {
+  it('are the same as from the per-point drift', async () => {
+    const { buildArrows } = await import('../src/view/forceField');
+    const grad = (x: number, y: number, out: Float64Array) => {
+      out[0] = 2 * x - Math.sin(y);
+      out[1] = y * y - 1;
+    };
+    const g = new Float64Array(2);
+    const batched = {
+      gradient: grad,
+      gradientBatch(xs: Float64Array, ys: Float64Array, n: number, _t: number, gx: Float64Array, gy: Float64Array) {
+        for (let i = 0; i < n; i++) {
+          grad(xs[i], ys[i], g);
+          gx[i] = g[0];
+          gy[i] = g[1];
+        }
+      },
+    };
+    const area = { x0: -3, y0: -2, x1: 3, y1: 2 };
+    const a = buildArrows({ gradient: grad }, area, 64, new Float32Array(0));
+    const b = buildArrows(batched, area, 64, new Float32Array(0));
+    expect(b.count).toBe(a.count);
+    expect(b.count).toBeGreaterThan(10);
+    expect(Array.from(b.data.subarray(0, b.count * 6))).toEqual(Array.from(a.data.subarray(0, a.count * 6)));
+  });
+});

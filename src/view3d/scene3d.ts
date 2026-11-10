@@ -46,7 +46,7 @@ import type { PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import { gridSpacing } from '../view/gridSpacing';
 import { HeightField } from './heightField';
-import type { CameraPose, Cursor3D, Rect, Scene3DView, WorldPick } from './types';
+import type { CameraPose, Cursor3D, Formula3D, HeightSource, Rect, Scene3DView, WorldPick } from './types';
 
 /** Vertical field of view of the 3D camera (degrees). */
 const FOV = 40;
@@ -110,6 +110,9 @@ export class Scene3D implements Scene3DView {
   private particleRadius = 0.1;
   private cssWidth = 1;
   private cssHeight = 1;
+  /** Ψ for particle heights and picking: the formula's exact values, or the drawn lattice. */
+  private heights: HeightSource | null = null;
+  private readonly scratch = { xs: new Float64Array(0), ys: new Float64Array(0), v: new Float64Array(0) };
 
   /** `getField` gives the lattice to show: the painted Ψ, or the one a formula is drawn into. */
   constructor(
@@ -280,6 +283,12 @@ export class Scene3D implements Scene3DView {
   }
 
   /** Shows or hides the iso-lines of Ψ (the Contours toggle). */
+  setFormula(f: Formula3D | null): void {
+    this.height.setFormula(f ? f.glsl : null);
+    if (f) this.height.setTime(f.t, f.sigma);
+    this.heights = f ? f.heights : null;
+  }
+
   setContours(on: boolean): void {
     this.height.setContours(on);
   }
@@ -310,26 +319,56 @@ export class Scene3D implements Scene3DView {
       return t0 <= t1;
     };
     if (!slab(o.x, d.x, x0, x1) || !slab(o.y, d.y, y0, y1) || !slab(o.z, d.z, -zMax, zMax)) return null;
-    // Height of the ray above the surface at parameter t.
-    const above = (t: number) => o.z + t * d.z - this.field.sample(o.x + t * d.x, o.y + t * d.y) * lift;
-    let prevT = t0;
-    if (above(prevT) <= 0) return this.hit(prevT); // starts below: the entry point is on the surface
-    const dt = (t1 - t0) / PICK_STEPS;
-    for (let k = 1; k <= PICK_STEPS; k++) {
-      const t = t0 + k * dt;
-      if (above(t) <= 0) {
-        let lo = prevT;
-        let hi = t;
-        for (let n = 0; n < 30; n++) {
-          const mid = (lo + hi) / 2;
-          if (above(mid) > 0) lo = mid;
-          else hi = mid;
-        }
-        return this.hit(hi);
+    // Height of the ray above the surface at the parameters ts (all at once: a formula is
+    // evaluated in one batch). The first parameter where it is ≤ 0 is the first crossing.
+    const firstBelow = (ts: Float64Array): number => {
+      const n = ts.length;
+      const { xs, ys, v } = this.points(n);
+      for (let k = 0; k < n; k++) {
+        xs[k] = o.x + ts[k] * d.x;
+        ys[k] = o.y + ts[k] * d.y;
       }
-      prevT = t;
+      this.surfaceHeights(xs, ys, n, v);
+      for (let k = 0; k < n; k++) if (o.z + ts[k] * d.z - v[k] * lift <= 0) return k;
+      return -1;
+    };
+    const steps = (a: number, b: number, n: number) => Float64Array.from({ length: n + 1 }, (_, k) => a + ((b - a) * k) / n);
+    let ts = steps(t0, t1, PICK_STEPS);
+    let k = firstBelow(ts);
+    if (k < 0) return null;
+    if (k === 0) return this.hit(t0); // starts below: the entry point is on the surface
+    // Refine the crossing in [ts[k−1], ts[k]]: 32 sub-steps per round, four rounds (≈ 10⁻⁶·step).
+    let lo = ts[k - 1];
+    let hi = ts[k];
+    for (let round = 0; round < 4; round++) {
+      ts = steps(lo, hi, 32);
+      k = firstBelow(ts);
+      if (k <= 0) break; // (k = 0 cannot happen: lo is above the surface)
+      lo = ts[k - 1];
+      hi = ts[k];
     }
-    return null;
+    return this.hit(hi);
+  }
+
+  /** Ψ as drawn (clamped to ±cap) at n points: the formula's exact values, or the lattice's. */
+  private surfaceHeights(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void {
+    if (this.heights) this.heights.samplePoints(xs, ys, n, out);
+    else this.field.samplePoints(xs, ys, n, out);
+    const cap = this.field.cap;
+    for (let i = 0; i < n; i++) {
+      const v = out[i];
+      out[i] = Number.isFinite(v) ? Math.min(cap, Math.max(-cap, v)) : 0;
+    }
+  }
+
+  private points(n: number): { xs: Float64Array; ys: Float64Array; v: Float64Array } {
+    const s = this.scratch;
+    if (s.xs.length < n) {
+      s.xs = new Float64Array(n);
+      s.ys = new Float64Array(n);
+      s.v = new Float64Array(n);
+    }
+    return { xs: s.xs.subarray(0, n), ys: s.ys.subarray(0, n), v: s.v.subarray(0, n) };
   }
 
   /** Shows the brush rings or the next particle's ring on the surface (null hides them). */
@@ -494,11 +533,16 @@ export class Scene3D implements Scene3DView {
     const ps = this.particles;
     const r = this.particleRadius;
     const lift = this.heightScale * Math.max(1e-4, this.relief);
-    for (let i = 0; i < ps.count; i++) {
+    const n = ps.count;
+    const { xs, ys, v } = this.points(n);
+    xs.set(ps.x.subarray(0, n));
+    ys.set(ps.y.subarray(0, n));
+    this.surfaceHeights(xs, ys, n, v); // one batch for all particles
+    for (let i = 0; i < n; i++) {
       const x = ps.x[i];
       const y = ps.y[i];
       this.m.makeScale(r, r, r);
-      this.m.setPosition(x, y, this.field.sample(x, y) * lift + r);
+      this.m.setPosition(x, y, v[i] * lift + r);
       this.dots.setMatrixAt(i, this.m);
       this.dots.setColorAt(i, this.palette[ps.color[i]] ?? this.palette[0]);
     }

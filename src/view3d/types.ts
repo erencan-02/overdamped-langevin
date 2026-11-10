@@ -24,6 +24,20 @@ export interface WorldPick {
   perPx: number;
 }
 
+/** Ψ at many points (the exact formula, or a lattice). */
+export interface HeightSource {
+  samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void;
+}
+
+/** A formula drawn on the GPU in 3D: its GLSL, the current time and σ, and its exact values. */
+export interface Formula3D {
+  glsl: { code: string; preamble: string };
+  t: number;
+  sigma: number;
+  /** For particle heights and picking (the same Ψ as drawn, on the CPU). */
+  heights: HeightSource;
+}
+
 /** What the 3D view shows under the mouse: the brush rings, or the next particle. */
 export type Cursor3D =
   | { kind: 'brush'; x: number; y: number; radius: number; sign: number; perPx: number }
@@ -40,6 +54,8 @@ export interface Scene3DView {
   setControlsEnabled(on: boolean): void;
   setGrid(on: boolean): void;
   setContours(on: boolean): void;
+  /** Draws Ψ from this formula on the GPU (null: from the lattice). Call every frame. */
+  setFormula(f: Formula3D | null): void;
   /** The point of the surface under a stage point (CSS px), or null if the ray misses it. */
   pick(sx: number, sy: number): WorldPick | null;
   setCursor(c: Cursor3D | null): void;

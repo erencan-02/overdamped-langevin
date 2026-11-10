@@ -1,6 +1,6 @@
 import type { PotentialField } from '../sim/field';
 import type { ParticleSystem } from '../sim/particles';
-import type { CameraPose, Cursor3D, Rect, Scene3DView, WorldPick } from './types';
+import type { CameraPose, Cursor3D, Formula3D, Rect, Scene3DView, WorldPick } from './types';
 
 export type ViewMode = '2d' | '3d';
 
@@ -125,7 +125,7 @@ export class ViewSwitch {
   }
 
   /** Call once per animation frame: advances a transition and draws the 3D view if visible. */
-  frame(nowMs: number, grid: boolean, contours: boolean): void {
+  frame(nowMs: number, grid: boolean, contours: boolean, formula: Formula3D | null = null): void {
     const scene = this.scene;
     const tr = this.transition;
     if (!scene) return;
@@ -148,6 +148,7 @@ export class ViewSwitch {
     if (this.opacity > 0) {
       scene.setGrid(grid);
       scene.setContours(contours);
+      scene.setFormula(formula);
       scene.render(nowMs);
     }
   }

@@ -41,6 +41,12 @@ export interface CompiledPotential {
   readonly timeDependent: boolean;
   /** Ψ depends on σ. */
   readonly usesSigma: boolean;
+  /**
+   * Ψ as GLSL ES 3.0 (an expression in x, y, r, theta, t, sigma, plus helper functions), so the
+   * pictures can evaluate it on the GPU; null if the formula has no GLSL form. Not trusted by
+   * itself: the renderer checks it against `value` before using it.
+   */
+  readonly glsl: { code: string; preamble: string } | null;
   /** Ψ(t, xs[i], ys[i]) for i < n, into `out`. */
   value(xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array): void;
   /** ∂Ψ/∂x and ∂Ψ/∂y at (t, xs[i], ys[i]) for i < n, into gx and gy. */
@@ -201,7 +207,18 @@ function buildPotential(ce: Engine, compile: Compile, src: string): PotentialPar
   const tmp = { a: new Float64Array(0) };
   const scratch = (n: number) => (tmp.a.length >= n ? tmp.a : (tmp.a = new Float64Array(n)));
 
+  let glsl: CompiledPotential['glsl'] = null;
+  try {
+    const g = compile(expr.simplify(), { to: 'glsl', fallback: false });
+    if (g.success && typeof g.code === 'string') {
+      glsl = { code: g.code, preamble: typeof g.preamble === 'string' ? g.preamble : '' };
+    }
+  } catch {
+    glsl = null; // drawn from the CPU instead
+  }
+
   const potential: CompiledPotential = {
+    glsl,
     timeDependent: psi.uses.has('t'),
     usesSigma: psi.uses.has('sigma'),
     value(xs, ys, n, t, sigma, out) {

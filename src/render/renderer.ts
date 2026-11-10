@@ -3,6 +3,13 @@ import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
 import type { Camera } from '../view/camera';
 import type { DriftField } from '../sim/schemes';
+import {
+  FORMULA_CHECK,
+  FORMULA_CHECK_VS,
+  formulaCheckFs,
+  formulaFieldFs,
+  type GlslFormula,
+} from './formulaShader';
 import { ARROW_FLOATS, arrowSpacing, buildArrows } from '../view/forceField';
 import { gridSpacing } from '../view/gridSpacing';
 import { createBuffer, createProgram, type Program } from './gl';
@@ -26,6 +33,9 @@ import {
 const TEX_N = CHUNK + 1;
 const INST_FLOATS = 4; // particle instance: x, y, colour, stored trail points
 
+/** While only Ψ's values change, force arrows are rebuilt at most this often (real time). */
+const ARROW_REFRESH_MS = 33;
+
 export interface RenderOptions {
   grid: boolean;
   trails: boolean;
@@ -37,6 +47,11 @@ export interface RenderOptions {
    * it. With a formula potential this is its exact gradient.
    */
   arrows?: DriftField & { readonly revision: number; readonly epoch: number };
+  /**
+   * Draw Ψ from the formula given to `setFormula` (on the GPU, per pixel) at this time and σ,
+   * instead of the field's lattice.
+   */
+  formula?: { t: number; sigma: number };
   /** Smoothed empirical measure to draw, or null. */
   density: DensityImage | null;
 }
@@ -90,6 +105,9 @@ export class Renderer {
   private readonly scratch = new Float32Array(TEX_N * TEX_N);
 
   private dpr = 1;
+  private arrowBuiltAt = -Infinity;
+  /** Heat map of the formula set by `setFormula` (null: none, or it did not pass the check). */
+  private formulaProg: Program | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', {
@@ -201,13 +219,17 @@ export class Renderer {
     gl.clearColor(1, 1, 1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    this.syncTextures(field);
-    this.drawField(cam, field, scale, W, H, opts.contours);
+    if (opts.formula && this.formulaProg) {
+      this.drawFormula(cam, field.cap, opts.formula, scale, W, H, opts.contours);
+    } else {
+      this.syncTextures(field);
+      this.drawField(cam, field, scale, W, H, opts.contours);
+    }
 
     gl.enable(gl.BLEND);
     if (opts.grid) this.drawGrid(cam, scale, W, H);
     if (opts.density) this.drawDensity(cam, opts.density, scale, W, H);
-    if (opts.forceField) this.drawArrows(cam, opts.arrows ?? field, scale, W, H);
+    if (opts.forceField) this.drawArrows(cam, opts.arrows ?? field, scale, W, H, opts.formula?.t ?? 0);
     this.uploadParticles(ps);
     // While the smoothed density is shown, particles and trails are faded so it reads through.
     const fade = opts.density ? 0.35 : 1;
@@ -317,6 +339,120 @@ export class Renderer {
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
+  // ---------------------------------------------------------------- formula on the GPU
+
+  /**
+   * Draws Ψ from a formula on the GPU from now on (null: from the field's lattice again). The
+   * shader is first evaluated at FORMULA_CHECK's points and compared with the exact values from
+   * `exact`; only if every value agrees (to float32 accuracy) is it used. Returns whether it is.
+   */
+  setFormula(
+    formula: {
+      glsl: GlslFormula;
+      exact(xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array): void;
+    } | null,
+  ): boolean {
+    const gl = this.gl;
+    if (this.formulaProg) gl.deleteProgram(this.formulaProg.program);
+    this.formulaProg = null;
+    if (!formula) return false;
+    try {
+      if (!this.checkFormula(formula.glsl, formula.exact)) return false;
+      this.formulaProg = createProgram(gl, FULLSCREEN_VS, formulaFieldFs(formula.glsl));
+      return true;
+    } catch (err) {
+      console.warn('The formula is drawn from the CPU: its GLSL could not be used.', err);
+      return false;
+    }
+  }
+
+  /** Evaluates the GLSL formula at the check points (float render target) and compares. */
+  private checkFormula(
+    glsl: GlslFormula,
+    exact: (xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array) => void,
+  ): boolean {
+    const gl = this.gl;
+    if (!gl.getExtension('EXT_color_buffer_float')) return false; // cannot read floats back: no check, no GPU
+    const pts = FORMULA_CHECK.points;
+    const n = pts.length;
+    const xs = Float64Array.from(pts, (p) => p[0]);
+    const ys = Float64Array.from(pts, (p) => p[1]);
+    const want = new Float64Array(n);
+    exact(xs, ys, n, FORMULA_CHECK.t, FORMULA_CHECK.sigma, want);
+
+    const prog = createProgram(gl, FORMULA_CHECK_VS, formulaCheckFs(glsl));
+    const tex = gl.createTexture()!;
+    const fbo = gl.createFramebuffer()!;
+    const vao = gl.createVertexArray()!;
+    const buf = gl.createBuffer()!;
+    const got = new Float32Array(4 * n);
+    try {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, n, 1);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return false;
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts.flat()), gl.STATIC_DRAW);
+      const loc = prog.attribs.a_xy;
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      gl.useProgram(prog.program);
+      gl.uniform1f(prog.uniforms.u_n, n);
+      gl.uniform1f(prog.uniforms.u_t, FORMULA_CHECK.t);
+      gl.uniform1f(prog.uniforms.u_sigma, FORMULA_CHECK.sigma);
+      gl.viewport(0, 0, n, 1);
+      gl.disable(gl.BLEND);
+      gl.drawArrays(gl.POINTS, 0, n);
+      gl.readPixels(0, 0, n, 1, gl.RGBA, gl.FLOAT, got);
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.deleteFramebuffer(fbo);
+      gl.deleteTexture(tex);
+      gl.deleteBuffer(buf);
+      gl.deleteVertexArray(vao);
+      gl.deleteProgram(prog.program);
+    }
+    for (let k = 0; k < n; k++) {
+      const w = want[k];
+      const g = got[4 * k];
+      if (!Number.isFinite(w)) continue; // undefined there: nothing to compare
+      // float32 on the GPU: a relative accuracy of 1e-4 leaves room for transcendental functions.
+      if (!(Math.abs(g - w) <= 1e-4 * Math.max(1, Math.abs(w)))) {
+        console.warn(`The GPU evaluates the formula differently at (${xs[k]}, ${ys[k]}): ${g} instead of ${w}.`);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private drawFormula(
+    cam: Camera,
+    cap: number,
+    f: { t: number; sigma: number },
+    scale: number,
+    W: number,
+    H: number,
+    contours: boolean,
+  ): void {
+    const gl = this.gl;
+    const p = this.formulaProg!;
+    gl.useProgram(p.program);
+    gl.bindVertexArray(this.gridVao); // full-screen triangle from gl_VertexID
+    gl.uniform2f(p.uniforms.u_res, W, H);
+    gl.uniform1f(p.uniforms.u_scale, scale);
+    gl.uniform2f(p.uniforms.u_center, cam.x, cam.y);
+    gl.uniform1f(p.uniforms.u_t, f.t);
+    gl.uniform1f(p.uniforms.u_sigma, f.sigma);
+    gl.uniform1f(p.uniforms.u_cap, cap);
+    gl.uniform1f(p.uniforms.u_contours, contours ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
   // ---------------------------------------------------------------- grid
 
   private drawGrid(cam: Camera, scale: number, W: number, H: number): void {
@@ -394,6 +530,7 @@ export class Renderer {
     scale: number,
     W: number,
     H: number,
+    t: number,
   ): void {
     const gl = this.gl;
     // Arrows live in world space, so they are built for a padded area around the view and only
@@ -403,13 +540,18 @@ export class Renderer {
     const key = `${spacing},${field.revision},${field.epoch}`;
     const a = this.arrowArea;
     const inside = a && b.x0 >= a.x0 && b.x1 <= a.x1 && b.y0 >= a.y0 && b.y1 <= a.y1;
-    if (key !== this.arrowKey || !inside) {
+    // When only Ψ's values changed (e.g. a time-dependent formula moving on), arrows are rebuilt
+    // at most every ARROW_REFRESH_MS: their motion stays smooth and the frame stays cheap.
+    const now = performance.now();
+    const viewChanged = !inside || !this.arrowKey.startsWith(`${spacing},`) || !this.arrowKey.endsWith(`,${field.epoch}`);
+    if (key !== this.arrowKey && (viewChanged || now - this.arrowBuiltAt >= ARROW_REFRESH_MS)) {
+      this.arrowBuiltAt = now;
       this.arrowKey = key;
       const padX = 0.5 * (b.x1 - b.x0);
       const padY = 0.5 * (b.y1 - b.y0);
       const area = { x0: b.x0 - padX, y0: b.y0 - padY, x1: b.x1 + padX, y1: b.y1 + padY };
       this.arrowArea = area;
-      const { data, count } = buildArrows(field, area, cam.scale, this.arrowData);
+      const { data, count } = buildArrows(field, area, cam.scale, this.arrowData, t);
       this.arrowData = data;
       this.arrowCount = count;
       gl.bindBuffer(gl.ARRAY_BUFFER, this.arrowBuffer);
