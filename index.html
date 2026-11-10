@@ -31,7 +31,7 @@
 
     <!-- Main toolbar -->
     <div class="toolbar card" role="toolbar" aria-label="Tools">
-      <div class="seg" role="radiogroup" aria-label="Mode">
+      <div class="seg" id="mode-seg" role="radiogroup" aria-label="Mode">
         <button class="seg-btn" data-mode="brush" role="radio" data-tip="Paint potential" data-key="B">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke-dasharray="2.2 2.8" /><circle cx="12" cy="12" r="3.2" class="fill" /></svg>
           <span>Brush</span>
@@ -40,6 +40,11 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8.5" r="2.4" class="fill" /><circle cx="16.5" cy="7" r="2.4" class="fill" /><circle cx="11.5" cy="16.5" r="2.4" class="fill" /></svg>
           <span>Particles</span>
         </button>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+      <div class="seg seg-view" id="view-seg" role="radiogroup" aria-label="View">
+        <button class="seg-btn" data-view="2d" role="radio" data-tip="2D view: paint and drop" data-key="2">2D</button>
+        <button class="seg-btn" data-view="3d" role="radio" data-tip="3D view: look around" data-key="3">3D</button>
         <span class="seg-thumb" aria-hidden="true"></span>
       </div>
 
@@ -472,6 +477,14 @@
             </ul>
           </section>
           <section>
+            <h3>3D view</h3>
+            <ul>
+              <li><b>2D / 3D</b> (top, or <kbd>2</kbd> / <kbd>3</kbd>): Ψ rises into a relief, particles sit at height Ψ</li>
+              <li><b>Drag</b> to orbit, <b>right-drag</b> to pan, <b>scroll</b> to zoom</li>
+              <li>Read-only: the simulation keeps running, editing happens in 2D</li>
+            </ul>
+          </section>
+          <section>
             <h3>Images</h3>
             <ul>
               <li><b>Drop an image on the left half</b> to turn it into Ψ: dark areas become valleys</li>
@@ -503,6 +516,8 @@
             <h3>Shortcuts</h3>
             <ul class="keys">
               <li><kbd>Space</kbd> Play / pause</li>
+              <li><kbd>→</kbd> One step (Δt) · hold <kbd>→</kbd> to play while held</li>
+              <li><kbd>2</kbd> / <kbd>3</kbd> 2D view / 3D view</li>
               <li><kbd>B</kbd> Brush · <kbd>P</kbd> Particles</li>
               <li><kbd>G</kbd> Grid · <kbd>T</kbd> Trails · <kbd>L</kbd> Contours</li>
               <li><kbd>F</kbd> Force field −∇Ψ</li>

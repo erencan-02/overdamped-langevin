@@ -7,7 +7,7 @@ import { UndoHistory } from './sim/history';
 import { RandomStreams } from './sim/random';
 import { applyPreset, type PresetName } from './sim/presets';
 import { SCHEMES, type SchemeId } from './sim/schemes';
-import { initialState, type Mode } from './state';
+import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { CollapsiblePanel } from './ui/collapsiblePanel';
 import { KlPanel } from './ui/klPanel';
@@ -32,6 +32,8 @@ import { AnalysisSettings, DisplaySettings, PhysicsSettings, ToolSettings } from
 import { BusyOverlay } from './ui/busyOverlay';
 import { DropController } from './ui/dropzone';
 import { PlaybackBar } from './ui/playbackBar';
+import { StepKey } from './ui/stepKey';
+import { ViewSwitch } from './view3d/viewSwitch';
 import { LiveCamera } from './image/liveCamera';
 import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
@@ -70,10 +72,33 @@ function main(): void {
   const overlay = new Overlay(overlayCanvas);
   const input = new InputController(stage, camera, field, particles, state, random, history);
 
+  // 2D (editable) ↔ read-only 3D view (three.js, loaded on first use).
+  const viewSwitch = new ViewSwitch(stage, field, particles, {
+    view2D: () => camera.bounds(),
+    onModeChange: (mode) => {
+      state.view = mode;
+      if (mode === '3d') {
+        input.cancel(); // ends a stroke or spray in progress
+        input.enabled = false;
+      }
+      controls.sync();
+    },
+    onError: (message) => controls.showToast(message),
+  });
+  /** In 3D the scene is read-only: edits are refused with a hint. Returns true if refused. */
+  const readOnly = (): boolean => {
+    if (state.view !== '3d') return false;
+    controls.showToast('The 3D view is read-only. Press 2 to edit in 2D.');
+    return true;
+  };
+
   const actions: ControlActions = {
     setMode(mode: Mode) {
       state.mode = mode;
       controls.sync();
+    },
+    setView(view: ViewKind) {
+      viewSwitch.set(view);
     },
     setScheme(id: SchemeId) {
       if (id === state.scheme) return;
@@ -99,6 +124,7 @@ function main(): void {
       controls.sync();
     },
     toggleCamera() {
+      if (readOnly()) return;
       liveCamera.toggle();
     },
     toggleRecording() {
@@ -125,22 +151,23 @@ function main(): void {
       controls.sync();
     },
     clearParticles() {
-      if (particles.count === 0) return;
+      if (readOnly() || particles.count === 0) return;
       history.run('Clear particles', () => particles.clear());
       controls.showToast('Particles cleared', { label: 'Undo', run: () => actions.undo() });
     },
     clearField() {
+      if (readOnly()) return;
       liveCamera.stop();
       history.run('Clear Ψ', () => field.clear());
       controls.showToast('Potential cleared', { label: 'Undo', run: () => actions.undo() });
     },
     undo() {
-      if (busy.active || input.busy || history.recording) return;
+      if (readOnly() || busy.active || input.busy || history.recording) return;
       const label = history.undo();
       controls.showToast(label ? `Undone: ${label}` : 'Nothing to undo');
     },
     redo() {
-      if (busy.active || input.busy || history.recording) return;
+      if (readOnly() || busy.active || input.busy || history.recording) return;
       const label = history.redo();
       controls.showToast(label ? `Redone: ${label}` : 'Nothing to redo');
     },
@@ -148,6 +175,7 @@ function main(): void {
       camera.reset();
     },
     importImage(target) {
+      if (readOnly()) return;
       importer.openPicker(target);
     },
     setSeed(seed: number) {
@@ -156,9 +184,11 @@ function main(): void {
       controls.showToast(`Seed ${seed}: all random streams restarted`);
     },
     openRecording() {
+      if (readOnly()) return;
       if (!busy.active) recordingInput.click();
     },
     preset(name: string) {
+      if (readOnly()) return;
       liveCamera.stop();
       history.run('Preset', () => applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets')));
     },
@@ -337,11 +367,47 @@ function main(): void {
   });
   new DropController(
     [new ImageDropHandler(importer), new RecordingDropHandler((file) => void openRecording(file))],
-    () => busy.active,
+    () => busy.active || state.view === '3d',
     (message) => controls.showToast(message),
+    () => (state.view === '3d' ? 'The 3D view is read-only. Press 2 to edit in 2D, then drop the file again.' : null),
   );
 
   // ---------------------------------------------------------------- keyboard
+
+  // →: one step per press (one integrator step, or the next frame of a recording); held, it plays.
+  const stepKey = new StepKey({
+    step: () => {
+      if (playback.active) {
+        const t = playback.timeline!;
+        if (playback.frame < t.frames - 1) playback.seek(playback.frame + 1);
+        else playback.pause();
+        return;
+      }
+      if (state.playing) {
+        state.playing = false; // stepping pauses, as in a video player
+        controls.sync();
+      }
+      particles.advance(field, DEFAULT_DT_MAX, state.sigma);
+    },
+    startHold: () => {
+      if (playback.active) playback.play(performance.now());
+      else {
+        state.playing = true;
+        controls.sync();
+      }
+    },
+    endHold: () => {
+      if (playback.active) playback.pause();
+      else {
+        state.playing = false;
+        controls.sync();
+      }
+    },
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowRight') stepKey.release();
+  });
+  window.addEventListener('blur', () => stepKey.release());
 
   window.addEventListener('keydown', (e) => {
     // While an image or a recording is loading, the app accepts no input at all.
@@ -370,6 +436,18 @@ function main(): void {
     // Typing in a text field (the test function, the seed) is not a shortcut.
     if (typing) return;
     switch (e.key) {
+      case '2':
+        actions.setView('2d');
+        break;
+      case '3':
+        actions.setView('3d');
+        break;
+      case 'ArrowRight':
+        // A focused slider uses the arrow keys itself.
+        if (target?.matches('input[type="range"], select')) return;
+        e.preventDefault();
+        stepKey.press(); // auto-repeat key-downs are ignored; the hold is timed by StepKey
+        break;
       case ' ':
         // Space would also "click" a focused button; take focus away and toggle once.
         e.preventDefault();
@@ -453,6 +531,7 @@ function main(): void {
     camera.setViewport(w, h);
     renderer.resize(w, h, dpr);
     overlay.resize(w, h, dpr);
+    viewSwitch.resize(w, h, dpr);
     controls.sync();
   };
   new ResizeObserver(resize).observe(stage);
@@ -483,6 +562,7 @@ function main(): void {
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
 
+    input.enabled = viewSwitch.interactive2D; // the 3D view (and its transitions) is read-only
     input.update(dt);
     // Playback first: it notices if the user just altered the simulation and leaves.
     playback.update(now);
@@ -521,30 +601,34 @@ function main(): void {
       recordings.renderLive(now);
     }
 
-    if (!renderer.gl.isContextLost()) {
-      renderer.render(camera, field, particles, {
+    // The 2D view is not drawn while the 3D view covers it completely.
+    if (viewSwitch.show2D) {
+      if (!renderer.gl.isContextLost()) {
+        renderer.render(camera, field, particles, {
+          grid: state.grid,
+          trails: state.trails,
+          contours: state.contours,
+          forceField: state.forceField,
+          density: state.showDensity ? monitor.density : null,
+        });
+      }
+      overlay.draw(camera, {
         grid: state.grid,
-        trails: state.trails,
-        contours: state.contours,
-        forceField: state.forceField,
-        density: state.showDensity ? monitor.density : null,
+        mode: state.mode,
+        cursor: input.cursor,
+        brushRadius: state.brushRadius,
+        brushSign: input.brushSign,
+        nextColor: PALETTE[input.nextColor],
+        panning: input.panning,
+        selection: input.selection,
+        analysisBox: monitor.active || observables.active ? monitor.region : null,
       });
     }
-    overlay.draw(camera, {
-      grid: state.grid,
-      mode: state.mode,
-      cursor: input.cursor,
-      brushRadius: state.brushRadius,
-      brushSign: input.brushSign,
-      nextColor: PALETTE[input.nextColor],
-      panning: input.panning,
-      selection: input.selection,
-      analysisBox: monitor.active || observables.active ? monitor.region : null,
-    });
+    viewSwitch.frame(now, state.grid);
 
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
-    if (input.cursor.visible) {
+    if (input.cursor.visible && viewSwitch.interactive2D) {
       const wx = camera.toWorldX(input.cursor.x);
       const wy = camera.toWorldY(input.cursor.y);
       controls.updateReadout(wx, wy, field.sample(wx, wy), particles.time, particles.count, MAX_PARTICLES);
@@ -565,6 +649,7 @@ function main(): void {
       liveCamera,
       monitor,
       observables,
+      viewSwitch,
       recorder,
       history,
       session,

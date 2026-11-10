@@ -41,6 +41,8 @@ export class InputController {
   brushSign = 0;
   panning = false;
   nextColor = 0;
+  /** False while the read-only 3D view is shown: presses and the wheel are ignored. */
+  enabled = true;
 
   private spraying = false;
   private sprayCarry = 0;
@@ -136,6 +138,7 @@ export class InputController {
   };
 
   private onDown = (e: PointerEvent): void => {
+    if (!this.enabled) return;
     const p = this.local(e);
     this.cursor.x = p.x;
     this.cursor.y = p.y;
@@ -227,6 +230,7 @@ export class InputController {
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
+    if (!this.enabled) return;
     const p = this.local(e);
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
     const dy = Math.max(-300, Math.min(300, e.deltaY * unit));

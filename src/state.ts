@@ -2,6 +2,8 @@ import { DEFAULTS } from './config';
 import { DEFAULT_SCHEME, type SchemeId } from './sim/schemes';
 
 export type Mode = 'brush' | 'particles';
+/** 2D (editable) or the read-only 3D view. */
+export type ViewKind = '2d' | '3d';
 
 /** User-controlled application state. */
 export interface AppState {
@@ -30,6 +32,8 @@ export interface AppState {
   kernelVariance: number;
   /** Draw the smoothed empirical measure on the scene. */
   showDensity: boolean;
+  /** 2D or 3D view (a viewing choice: not saved in recordings). */
+  view: ViewKind;
   /** Test function f(x, y) of the observables window, in LaTeX (always a valid expression). */
   observable: string;
 }
@@ -51,6 +55,7 @@ export function initialState(): AppState {
     particleSpacing: DEFAULTS.particleSpacing,
     kernelVariance: DEFAULTS.kernelVariance,
     showDensity: false,
+    view: '2d',
     observable: DEFAULTS.observable,
   };
 }

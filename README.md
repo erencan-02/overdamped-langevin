@@ -39,6 +39,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Pan | Hold the **mouse wheel** and drag (or **Alt + drag**) |
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
+| Single step | <kbd>→</kbd> takes one step of Δt = 2 ms (or shows the next frame of a recording); **hold** <kbd>→</kbd> to play while it is held |
+| 3D view | **2D / 3D** switch next to Brush / Particles (or <kbd>2</kbd> / <kbd>3</kbd>): Ψ as a relief with the particles on it; **drag** to orbit, **right-drag** to pan, **scroll** to zoom. Read-only: switch back to 2D to edit |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
 | Force field −∇Ψ (arrows) | Toolbar toggle or <kbd>F</kbd> |
 | Image → Ψ | **Drop an image on the left half** of the window, or Scene menu → *Image → Ψ…* (<kbd>I</kbd>) |

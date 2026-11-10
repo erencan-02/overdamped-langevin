@@ -67,6 +67,17 @@ button {
 #overlay {
   pointer-events: none;
 }
+/* The read-only 3D view (three.js canvas) lies over the 2D canvases while it is shown. */
+.stage canvas.view3d {
+  cursor: grab;
+  touch-action: none;
+}
+.stage canvas.view3d:active {
+  cursor: grabbing;
+}
+.stage canvas.view3d[hidden] {
+  display: none;
+}
 
 /* ------------------------------------------------------------------ cards */
 
@@ -180,6 +191,21 @@ svg .fill {
   background: var(--surface-solid);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1), 0 1px 6px rgba(15, 23, 42, 0.06);
+}
+.seg-view {
+  margin-left: 6px;
+}
+.seg-view .seg-btn {
+  padding: 0 9px;
+  font-variant-numeric: tabular-nums;
+}
+/* In 3D the scene is read-only: the brush/particle tools do not apply. */
+.seg.disabled .seg-btn {
+  cursor: default;
+  opacity: 0.45;
+}
+.seg.disabled .seg-thumb {
+  opacity: 0.5;
 }
 /* Only animate mode switches, not the initial placement. */
 .seg.animate .seg-thumb {
@@ -1587,18 +1613,40 @@ body.in-playback .hint {
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 640px) {
+  /* Phones: the view switch shows only the view to switch to (one button instead of two). */
+  .seg-view .seg-btn[aria-checked='true'],
+  .seg-view .seg-thumb {
+    display: none;
+  }
+  .seg-view {
+    margin-left: 2px;
+  }
+}
 @media (max-width: 400px) {
   /* Narrow phones (360 px): tighter toolbar so all buttons fit. */
+  .toolbar {
+    gap: 1px;
+    max-width: calc(100vw - 16px);
+  }
   .icon-btn {
-    width: 27px;
+    width: 22px;
   }
   .divider {
     display: none;
   }
+  .seg {
+    padding: 2px;
+  }
+  .seg-thumb {
+    top: 2px;
+    bottom: 2px;
+  }
   .seg-btn {
-    padding: 0 5px;
+    padding: 0 4px;
   }
   .play {
+    flex: none;
     padding: 0 7px;
   }
 }

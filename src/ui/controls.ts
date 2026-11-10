@@ -1,6 +1,6 @@
 import { COLORMAP, PSI_CAP, RANGES } from '../config';
 import { SCHEMES, type SchemeId } from '../sim/schemes';
-import type { AppState, Mode } from '../state';
+import type { AppState, Mode, ViewKind } from '../state';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -10,6 +10,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
 
 export interface ControlActions {
   setMode(mode: Mode): void;
+  setView(view: ViewKind): void;
   setScheme(id: SchemeId): void;
   setSeed(seed: number): void;
   openRecording(): void;
@@ -51,8 +52,10 @@ export class Controls {
   private readonly toast = $('toast');
   private readonly readout = $('readout');
   private readonly particleCount = $('particle-count');
-  private readonly segButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.seg-btn'));
-  private readonly segThumb = document.querySelector<HTMLElement>('.seg-thumb')!;
+  private readonly modeSeg = $('mode-seg');
+  private readonly segButtons = Array.from(this.modeSeg.querySelectorAll<HTMLButtonElement>('.seg-btn'));
+  private readonly viewSeg = $('view-seg');
+  private readonly viewButtons = Array.from(this.viewSeg.querySelectorAll<HTMLButtonElement>('.seg-btn'));
   private readonly schemeButtons = Array.from(
     document.querySelectorAll<HTMLButtonElement>('[data-scheme]'),
   );
@@ -65,7 +68,12 @@ export class Controls {
     actions: ControlActions,
   ) {
     for (const b of this.segButtons) {
-      b.addEventListener('click', () => actions.setMode(b.dataset.mode as Mode));
+      b.addEventListener('click', () => {
+        if (this.state.view === '2d') actions.setMode(b.dataset.mode as Mode);
+      });
+    }
+    for (const b of this.viewButtons) {
+      b.addEventListener('click', () => actions.setView(b.dataset.view as ViewKind));
     }
     for (const b of this.schemeButtons) {
       b.addEventListener('click', () => actions.setScheme(b.dataset.scheme as SchemeId));
@@ -171,11 +179,14 @@ export class Controls {
     this.buildLegend();
     this.sync();
     // Button sizes change with breakpoints (labels hidden on phones) and late-loading fonts.
-    const ro = new ResizeObserver(() => this.placeThumb());
-    for (const b of this.segButtons) ro.observe(b);
-    // Enable the sliding animation of the mode switch only after its first placement.
+    const ro = new ResizeObserver(() => this.placeThumbs());
+    for (const b of [...this.segButtons, ...this.viewButtons]) ro.observe(b);
+    // Enable the sliding animation of the switches only after their first placement.
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => this.segThumb.parentElement?.classList.add('animate')),
+      requestAnimationFrame(() => {
+        this.modeSeg.classList.add('animate');
+        this.viewSeg.classList.add('animate');
+      }),
     );
   }
 
@@ -252,7 +263,11 @@ export class Controls {
     const s = this.state;
     this.stage.dataset.mode = s.mode;
     for (const b of this.segButtons) b.setAttribute('aria-checked', String(b.dataset.mode === s.mode));
-    this.placeThumb();
+    this.placeThumbs();
+    const in3D = s.view === '3d';
+    this.modeSeg.classList.toggle('disabled', in3D);
+    for (const b of this.segButtons) b.setAttribute('aria-disabled', String(in3D));
+    for (const b of this.viewButtons) b.setAttribute('aria-checked', String(b.dataset.view === s.view));
     for (const el of document.querySelectorAll<HTMLElement>('.mode-only')) {
       el.hidden = el.dataset.for !== s.mode;
     }
@@ -275,12 +290,10 @@ export class Controls {
     this.updateHint();
   }
 
-  /** Moves the highlight of the mode switch under the active button. */
-  private placeThumb(): void {
-    const active = this.segButtons.find((b) => b.dataset.mode === this.state.mode);
-    if (!active) return;
-    this.segThumb.style.width = `${active.offsetWidth}px`;
-    this.segThumb.style.transform = `translateX(${active.offsetLeft}px)`;
+  /** Moves the highlight of each segmented switch under its active button. */
+  private placeThumbs(): void {
+    placeThumb(this.modeSeg, this.segButtons.find((b) => b.dataset.mode === this.state.mode));
+    placeThumb(this.viewSeg, this.viewButtons.find((b) => b.dataset.view === this.state.view));
   }
 
   /** Reflects the recording state in the toolbar button. */
@@ -328,7 +341,10 @@ export class Controls {
     const particles =
       '<span><b>Click</b> drop particle</span><span><b>Shift-drag</b> spray</span>' +
       '<span><b>Right-drag</b> grid</span><span><b>Right-click</b> remove</span>';
-    this.hint.innerHTML = this.state.mode === 'brush' ? brush : particles;
+    const view3d =
+      '<span><b>Drag</b> orbit</span><span><b>Right-drag</b> pan</span>' +
+      '<span><b>Scroll</b> zoom</span><span><b>2</b> back to 2D to edit</span>';
+    this.hint.innerHTML = this.state.view === '3d' ? view3d : this.state.mode === 'brush' ? brush : particles;
   }
 
   /** Shows a short message, optionally with one action button (then it stays longer). */
@@ -368,4 +384,12 @@ export class Controls {
       this.lastCount = count;
     }
   }
+}
+
+/** Slides the highlight (`.seg-thumb`) of a segmented switch under its active button. */
+function placeThumb(seg: HTMLElement, active: HTMLElement | undefined): void {
+  const thumb = seg.querySelector<HTMLElement>('.seg-thumb');
+  if (!thumb || !active) return;
+  thumb.style.width = `${active.offsetWidth}px`;
+  thumb.style.transform = `translateX(${active.offsetLeft}px)`;
 }

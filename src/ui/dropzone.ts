@@ -28,6 +28,8 @@ export class DropController {
     private readonly handlers: readonly DropHandler[],
     private readonly isBusy: () => boolean,
     private readonly reject: (message: string) => void,
+    /** Why a drop is refused while `isBusy` (shown to the user), or null to ignore it silently. */
+    private readonly blockedReason: () => string | null = () => null,
   ) {
     window.addEventListener('dragenter', this.onEnter);
     window.addEventListener('dragover', this.onOver);
@@ -84,7 +86,11 @@ export class DropController {
     e.preventDefault();
     this.depth = 0;
     this.hide();
-    if (this.isBusy()) return;
+    if (this.isBusy()) {
+      const why = this.blockedReason();
+      if (why) this.reject(why);
+      return;
+    }
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (!files.length) return;
     for (const file of files) {
