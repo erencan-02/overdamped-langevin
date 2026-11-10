@@ -1,10 +1,10 @@
-import type { PotentialField } from '../sim/field';
+import type { PotentialSampler } from '../sim/potential';
 import type { ParticleSystem } from '../sim/particles';
 import {
   type AnalysisGrid,
   type Box,
   depositParticles,
-  gibbsLogProbabilities,
+  gibbsLogProbabilitiesOf,
   gridBox,
   klDivergence,
   makeGrid,
@@ -75,7 +75,7 @@ export class EquilibriumMonitor {
   private densityVersion = 0;
 
   constructor(
-    private readonly field: PotentialField,
+    private readonly field: PotentialSampler,
     private readonly particles: ParticleSystem,
   ) {}
 
@@ -173,8 +173,7 @@ export class EquilibriumMonitor {
   private ensureGibbs(grid: AnalysisGrid, sigma: number): Float64Array | null {
     const key = `${this.gridKey}|${this.field.revision}|${this.field.epoch}|${sigma}`;
     if (key !== this.piKey) {
-      const field = this.field;
-      this.logQ = gibbsLogProbabilities(grid, (x, y) => field.sample(x, y), sigma);
+      this.logQ = gibbsLogProbabilitiesOf(grid, this.field, sigma);
       this.piKey = key;
       this.floorKey = '';
     }

@@ -26,6 +26,8 @@ export interface RecordedParams {
   scheme: SchemeId;
   seed: number;
   playing: boolean;
+  /** Ψ from a formula (LaTeX), or undefined/null if Ψ is the painted lattice. */
+  potentialTex?: string | null;
 }
 
 /** Format name in the metadata of recordings (files made before the app was renamed say 'potential-sde-run'). */
@@ -74,6 +76,9 @@ export class Run {
   readonly scheme: number[] = [];
   readonly playing: number[] = [];
   readonly seed: number[] = [];
+  /** Per frame: index into `potentialExpressions` of the formula Ψ, or −1 for the painted lattice. */
+  readonly potentialExpr: number[] = [];
+  readonly potentialExpressions: string[] = [];
 
   // Ψ snapshots.
   readonly psiGrid: PsiGrid;
@@ -182,6 +187,7 @@ export class Run {
       scheme: u1(this.scheme),
       playing: u1(this.playing),
       seed: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.seed) },
+      potential_expr: { dtype: '<i4', shape: [F], data: Int32Array.from(this.potentialExpr) },
       rng_state: { dtype: '<u4', shape: [F, 4], data: concatU32(this.rngState) },
       clock_remainder: f8(this.clockRemainder),
       next_id: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.nextId) },
@@ -218,6 +224,7 @@ export class Run {
       kl: 'KL(rho_h || pi) with rho_h = empirical measure * N(0, h^2 I), on the KL box; NaN = undefined',
       observable: 'mean of f over the particles in the KL box, 95% CI half width 1.96 s / sqrt(n), exact = integral of f d(pi) on the box',
       observable_expressions: this.obsExpressions,
+      potential_expressions: this.potentialExpressions,
       constants: {
         psi_cap: PSI_CAP,
         psi_lattice_spacing: CELL_SIZE,
@@ -244,6 +251,8 @@ export class Run {
         scheme: '0 = stochastic Heun, 1 = Euler-Maruyama, per frame (F)',
         playing: '1 if the simulation was running, per frame (F)',
         seed: 'seed of the random streams, per frame (F)',
+        potential_expr:
+          'index into metadata.potential_expressions (LaTeX of Psi(t, x, y)) per frame, or -1 if Psi is the painted lattice in `psi` (F)',
         rng_state: "state of the 'dynamics' xoshiro128** stream after each frame (F x 4)",
         clock_remainder: 'simulated time carried over to the next fixed step, per frame (F)',
         next_id: 'id the next new particle would get, per frame (F)',
@@ -343,7 +352,7 @@ export class Recorder {
     // A Ψ snapshot always comes with a frame, so that it can be tied to an exact frame index.
     const pKey = `${field.revision}|${field.epoch}`;
     const psiDue = pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS);
-    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}`;
+    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}`;
     if (force || psiDue || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
@@ -358,6 +367,13 @@ export class Recorder {
       run.clockRemainder.push(ps.clockRemainder);
       run.nextId.push(ps.nextId);
       run.seed.push(p.seed);
+      if (p.potentialTex) {
+        let e = run.potentialExpressions.indexOf(p.potentialTex);
+        if (e < 0) e = run.potentialExpressions.push(p.potentialTex) - 1;
+        run.potentialExpr.push(e);
+      } else {
+        run.potentialExpr.push(-1);
+      }
       for (let i = 0; i < n; i++) if (!run.colorOf.has(ps.id[i])) run.colorOf.set(ps.id[i], ps.color[i]);
       run.sigma.push(p.sigma);
       run.speed.push(p.speed);

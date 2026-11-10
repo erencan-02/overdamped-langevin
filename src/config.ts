@@ -47,6 +47,8 @@ export const DEFAULTS = {
   brushStrength: 6,
   particleSpacing: 0.5,
   kernelVariance: 0.09,
+  /** Potential formula Ψ(t, x, y) of the potential window (LaTeX): a double well. */
+  potential: '\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}',
   /** Test function of the observables window (LaTeX). */
   observable: 'x^2 + y^2',
   scale: 64,

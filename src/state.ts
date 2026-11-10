@@ -2,8 +2,10 @@ import { DEFAULTS } from './config';
 import { DEFAULT_SCHEME, type SchemeId } from './sim/schemes';
 
 export type Mode = 'brush' | 'particles';
-/** 2D (editable) or the read-only 3D view. */
+/** 2D or 3D view. */
 export type ViewKind = '2d' | '3d';
+/** Ψ painted on a lattice (brush, images, camera), or given by a formula Ψ(t, x, y). */
+export type PotentialMode = 'painted' | 'formula';
 
 /** User-controlled application state. */
 export interface AppState {
@@ -34,6 +36,10 @@ export interface AppState {
   showDensity: boolean;
   /** 2D or 3D view (a viewing choice: not saved in recordings). */
   view: ViewKind;
+  /** Where Ψ comes from. */
+  potentialMode: PotentialMode;
+  /** The formula Ψ(t, x, y) in LaTeX (used in 'formula' mode; always a valid expression). */
+  potentialTex: string;
   /** Test function f(x, y) of the observables window, in LaTeX (always a valid expression). */
   observable: string;
 }
@@ -56,6 +62,8 @@ export function initialState(): AppState {
     kernelVariance: DEFAULTS.kernelVariance,
     showDensity: false,
     view: '2d',
+    potentialMode: 'painted',
+    potentialTex: DEFAULTS.potential,
     observable: DEFAULTS.observable,
   };
 }

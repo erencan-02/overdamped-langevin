@@ -66,9 +66,15 @@ export class HeightField {
   private j0 = 0;
   private stride = 1;
   private key = '';
+  private source: PotentialField | null = null;
 
-  constructor(private readonly field: PotentialField) {
-    this.uniforms.uCap.value = field.cap;
+  /** `getField` gives the lattice to show (it changes between the painted one and a formula's). */
+  constructor(private readonly getField: () => PotentialField) {
+    this.uniforms.uCap.value = getField().cap;
+  }
+
+  private get field(): PotentialField {
+    return this.getField();
   }
 
   /** Covers `region` (world) with texels; `heightScale` is the world height per unit of Ψ. */
@@ -101,9 +107,11 @@ export class HeightField {
 
   /** Re-uploads Ψ if it changed since the last upload. Returns true if it did. */
   update(): boolean {
-    const key = `${this.field.revision}|${this.field.epoch}`;
-    if (key === this.key) return false;
+    const field = this.field;
+    const key = `${field.revision}|${field.epoch}`;
+    if (key === this.key && field === this.source) return false;
     this.key = key;
+    this.source = field;
     const size = this.uniforms.uPsiSize.value;
     this.field.copyNodes(this.i0, this.j0, size.x, size.y, this.stride, this.data);
     this.uniforms.uPsi.value.needsUpdate = true;

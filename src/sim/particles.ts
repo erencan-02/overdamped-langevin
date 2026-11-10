@@ -271,8 +271,9 @@ export class ParticleSystem {
     } else {
       this.clockRemainder = Math.max(0, pending - n * dt);
     }
+    const t0 = this.time;
     for (let s = 0; s < n; s++) {
-      this.step(field, dt, sigma);
+      this.stepAt(field, dt, sigma, t0 + s * dt);
       this.trailClock += dt;
       if (this.trailClock >= TRAIL_DT - 1e-12) {
         this.trailClock -= TRAIL_DT;
@@ -294,9 +295,14 @@ export class ParticleSystem {
     return this.lastSubsteps * this.count * this.scheme.driftEvals;
   }
 
-  /** One step of size dt for every particle, using the current scheme. */
+  /** One step of size dt for every particle, using the current scheme (does not advance `time`). */
   step(field: DriftField, dt: number, sigma: number): void {
-    this.scheme.step(this, field, dt, sigma, this.rng);
+    this.stepAt(field, dt, sigma, this.time);
+  }
+
+  /** One step of size dt starting at time t (the drift may depend on time). */
+  private stepAt(field: DriftField, dt: number, sigma: number, t: number): void {
+    this.scheme.step(this, field, dt, sigma, this.rng, t);
     this.version++;
   }
 

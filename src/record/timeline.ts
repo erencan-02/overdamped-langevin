@@ -28,6 +28,9 @@ export class RecordingTimeline {
   private readonly y: NumericArray;
   private readonly colorOf = new Map<number, number>();
   private readonly perFrame: Record<'sigma' | 'speed' | 'kernelVariance' | 'scheme' | 'seed', NumericArray | null>;
+  /** Formula of Ψ per frame (index into `potentialExpressions`, −1 = painted), if recorded. */
+  private readonly potentialExpr: NumericArray | null;
+  private readonly potentialExpressions: string[];
   private readonly rngState: NumericArray | null;
   private readonly clockRemainder: NumericArray | null;
   private readonly nextId: NumericArray | null;
@@ -86,6 +89,9 @@ export class RecordingTimeline {
     const idColor = num('id_color');
     if (idList && idColor) for (let k = 0; k < idList.length; k++) this.colorOf.set(idList[k], idColor[k] ?? 0);
 
+    this.potentialExpr = num('potential_expr');
+    const exprs = meta.potential_expressions;
+    this.potentialExpressions = Array.isArray(exprs) ? exprs.filter((e): e is string => typeof e === 'string') : [];
     this.perFrame = {
       sigma: num('sigma'),
       speed: num('speed'),
@@ -212,6 +218,11 @@ export class RecordingTimeline {
     if (pf.speed) physics.speed = pf.speed[k];
     if (pf.scheme) physics.scheme = SCHEME_NAMES[pf.scheme[k]] ?? 'heun';
     physics.seed = pf.seed ? pf.seed[k] : 0;
+    // Ψ: a formula, or the painted lattice (also for recordings made before formulas existed).
+    const e = this.potentialExpr ? this.potentialExpr[k] : -1;
+    const tex = e >= 0 ? this.potentialExpressions[e] : undefined;
+    physics.potentialMode = tex ? 'formula' : 'painted';
+    if (tex) physics.potentialTex = tex;
     snap.physics = physics;
     if (pf.kernelVariance) snap.analysis = { kernelVariance: pf.kernelVariance[k] };
 

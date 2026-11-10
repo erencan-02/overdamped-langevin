@@ -71,18 +71,49 @@ export function gibbsLogProbabilities(
 ): Float64Array | null {
   if (!(sigma > 1e-6)) return null;
   const { nx, ny, x0, y0, cell } = grid;
-  const k = -2 / (sigma * sigma);
-  const a = new Float64Array(nx * ny);
-  let max = -Infinity;
+  const psi = psiOut ?? new Float64Array(nx * ny);
   for (let j = 0; j < ny; j++) {
     const y = y0 + (j + 0.5) * cell;
+    for (let i = 0; i < nx; i++) psi[j * nx + i] = psiAt(x0 + (i + 0.5) * cell, y);
+  }
+  return gibbsFromValues(psi, sigma);
+}
+
+/**
+ * The same, with Ψ at all cell centres evaluated in one batch (`samplePoints`, e.g. a formula
+ * compiled for many points at once).
+ */
+export function gibbsLogProbabilitiesOf(
+  grid: AnalysisGrid,
+  potential: { samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void },
+  sigma: number,
+  psiOut?: Float64Array,
+): Float64Array | null {
+  if (!(sigma > 1e-6)) return null;
+  const { nx, ny, x0, y0, cell } = grid;
+  const n = nx * ny;
+  const xs = new Float64Array(n);
+  const ys = new Float64Array(n);
+  for (let j = 0; j < ny; j++) {
     for (let i = 0; i < nx; i++) {
-      const psi = psiAt(x0 + (i + 0.5) * cell, y);
-      if (psiOut) psiOut[j * nx + i] = psi;
-      const v = k * psi;
-      a[j * nx + i] = v;
-      if (v > max) max = v;
+      xs[j * nx + i] = x0 + (i + 0.5) * cell;
+      ys[j * nx + i] = y0 + (j + 0.5) * cell;
     }
+  }
+  const psi = psiOut ?? new Float64Array(n);
+  potential.samplePoints(xs, ys, n, psi);
+  return gibbsFromValues(psi, sigma);
+}
+
+/** log q_c = −2Ψ_c/σ² − log Σ exp(−2Ψ/σ²), by log-sum-exp. */
+function gibbsFromValues(psi: Float64Array, sigma: number): Float64Array {
+  const k = -2 / (sigma * sigma);
+  const a = new Float64Array(psi.length);
+  let max = -Infinity;
+  for (let c = 0; c < psi.length; c++) {
+    const v = k * psi[c];
+    a[c] = v;
+    if (v > max) max = v;
   }
   let z = 0;
   for (let c = 0; c < a.length; c++) z += Math.exp(a[c] - max);

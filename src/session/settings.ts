@@ -2,7 +2,7 @@ import { RANGES } from '../config';
 import type { ParticleSystem } from '../sim/particles';
 import type { RandomStreams } from '../sim/random';
 import { SCHEMES, type SchemeId } from '../sim/schemes';
-import type { AppState } from '../state';
+import type { AppState, PotentialMode } from '../state';
 import { StateComponent } from './component';
 import { BooleanField, EnumField, type Field, IntegerField, NumberField, StringField } from './fields';
 
@@ -53,7 +53,7 @@ export abstract class SettingsGroup<K extends keyof AppState> extends StateCompo
   protected afterApply(_changed: K[]): void {}
 }
 
-type PhysicsKey = 'sigma' | 'speed' | 'scheme' | 'seed';
+type PhysicsKey = 'sigma' | 'speed' | 'scheme' | 'seed' | 'potentialMode' | 'potentialTex';
 
 /** Parameters of the dynamics. Applied first: the seed resets the random streams. */
 export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
@@ -64,6 +64,9 @@ export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
     new NumberField('speed', ...RANGES.speed),
     new EnumField<SchemeId>('scheme', Object.keys(SCHEMES) as SchemeId[]),
     new IntegerField('seed', 0, 2 ** 32 - 1),
+    new EnumField<PotentialMode>('potentialMode', ['painted', 'formula']),
+    // Checked by the potential window when applied (the LaTeX parser loads on demand).
+    new StringField('potentialTex', 500),
   ] as Field<AppState[PhysicsKey]>[];
 
   constructor(

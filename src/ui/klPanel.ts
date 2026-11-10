@@ -5,6 +5,9 @@ import { TimeSeriesPlot } from './timeSeriesPlot';
 /**
  * The "Distance to equilibrium" window: live plot of KL(ρ̂_h ‖ π) over simulated time (log
  * scale) with the smoothing floor, the current value, particles in the box, and actions.
+ *
+ * Nothing is estimated while the window is closed (unless a recording or the density view needs
+ * it), and its typeset formulas are only loaded when it is first opened.
  */
 export class KlPanel {
   private readonly value = byId('kl-value');
@@ -14,11 +17,16 @@ export class KlPanel {
 
   constructor(
     private readonly monitor: EquilibriumMonitor,
-    actions: { fitBox(): void },
+    actions: {
+      fitBox(): void;
+      /** The window was opened (e.g. to typeset its formulas on first use). */
+      opened(): void;
+    },
   ) {
     this.panel = new CollapsiblePanel({ section: 'analysis', toggle: 'analysis-toggle', body: 'analysis-body' }, (open) => {
       this.monitor.enabled = open;
       if (open) {
+        actions.opened();
         // The curve was not tracked while closed (unless something kept the monitor running).
         if (!this.monitor.keepRunning) this.monitor.reset();
         this.draw();

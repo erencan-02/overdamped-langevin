@@ -39,6 +39,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Pan | Hold the **mouse wheel** and drag (or **Alt + drag**) |
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
+| Potential formula | *Potential Ψ* window (top left): switch on *Use a formula* and type Ψ(t, x, y) in LaTeX (x, y, r, \theta, t, \sigma), or click an example. The gradient is derived symbolically, so the dynamics have no lattice and no cap; Ψ may depend on time |
 | Single step | <kbd>→</kbd> takes one step of Δt = 2 ms (or shows the next frame of a recording); **hold** <kbd>→</kbd> to play while it is held |
 | 3D view | **2D / 3D** switch next to Brush / Particles (or <kbd>2</kbd> / <kbd>3</kbd>): Ψ as a relief with the particles on it, computed on the GPU. The brush and the particle tools (click, Shift-drag spray, right-click remove) work on the surface; **middle-drag** or **Alt + drag** orbits, **Shift + middle-drag** pans, **scroll** zooms, one finger orbits on touch screens. The live camera works in 3D too; images and recordings are opened in 2D |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |

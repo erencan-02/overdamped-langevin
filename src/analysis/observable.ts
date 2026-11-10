@@ -1,7 +1,7 @@
-import type { PotentialField } from '../sim/field';
+import type { PotentialSampler } from '../sim/potential';
 import type { ParticleSystem } from '../sim/particles';
 import type { EquilibriumMonitor } from './equilibrium';
-import { type AnalysisGrid, gibbsLogProbabilities, gridBox } from './kde';
+import { type AnalysisGrid, gibbsLogProbabilitiesOf, gridBox } from './kde';
 import type { CompiledObservable, EvalContext } from './latex';
 import { TimeSeries } from './timeSeries';
 
@@ -78,7 +78,7 @@ export class ObservableMonitor {
   private sigma = 0;
 
   constructor(
-    private readonly field: PotentialField,
+    private readonly field: PotentialSampler,
     private readonly particles: ParticleSystem,
     private readonly equilibrium: EquilibriumMonitor,
   ) {
@@ -214,14 +214,14 @@ export class ObservableMonitor {
 export function exactExpectation(
   grid: AnalysisGrid,
   f: CompiledObservable,
-  field: Pick<PotentialField, 'sample'>,
+  field: Pick<PotentialSampler, 'samplePoints'>,
   ctx: EvalContext,
 ): number {
   const m = Math.max(1, Math.ceil(EXACT_CELLS / Math.max(grid.nx, grid.ny)));
   const fine: AnalysisGrid = { x0: grid.x0, y0: grid.y0, cell: grid.cell / m, nx: grid.nx * m, ny: grid.ny * m };
   const n = fine.nx * fine.ny;
   const psiAt = new Float64Array(n); // Ψ at the cells: sampled once, for π and for f
-  const logQ = gibbsLogProbabilities(fine, (x, y) => field.sample(x, y), ctx.sigma, psiAt);
+  const logQ = gibbsLogProbabilitiesOf(fine, field, ctx.sigma, psiAt);
   if (!logQ) return NaN;
   // f at the cells that carry mass, in one batch.
   const xs = new Float64Array(n);

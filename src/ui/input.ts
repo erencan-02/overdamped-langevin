@@ -53,6 +53,8 @@ export class InputController {
    * 2D camera is used then).
    */
   picker: ((sx: number, sy: number) => WorldPick | null) | null = null;
+  /** Painting is refused while Ψ is a formula; this is called instead (e.g. to explain why). */
+  paintBlocked: () => boolean = () => false;
 
   private spraying = false;
   private sprayCarry = 0;
@@ -181,6 +183,7 @@ export class InputController {
     const wy = hit.y;
 
     if (this.state.mode === 'brush') {
+      if (this.paintBlocked()) return;
       this.toolPointer = e.pointerId;
       this.brushSign = e.button === 0 ? 1 : -1;
       this.lastBrush = { x: wx, y: wy };

@@ -12,6 +12,16 @@ beforeAll(async () => {
   parser = await loadTexParser();
 });
 
+/** A potential given as a function, in the form the analysis code takes. */
+function sampler(sample: (x: number, y: number) => number) {
+  return {
+    sample,
+    samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array) {
+      for (let i = 0; i < n; i++) out[i] = sample(xs[i], ys[i]);
+    },
+  };
+}
+
 function compile(tex: string) {
   const r = parser.parse(tex);
   if (!r.ok) throw new Error(r.message);
@@ -23,7 +33,7 @@ describe('exact Gibbs expectation', () => {
 
   it('matches closed forms for a Gaussian Gibbs measure', () => {
     // Ψ = (x² + y²)/2 and σ = 1 give π ∝ exp(−x² − y²): N(0, ½ I).
-    const field = { sample: (x: number, y: number) => (x * x + y * y) / 2 };
+    const field = sampler((x: number, y: number) => (x * x + y * y) / 2);
     const ctx = { sigma: 1, psi: field.sample };
     expect(exactExpectation(grid, compile('x^2'), field, ctx)).toBeCloseTo(0.5, 4);
     expect(exactExpectation(grid, compile('x^2 + y^2'), field, ctx)).toBeCloseTo(1, 4);
@@ -35,7 +45,7 @@ describe('exact Gibbs expectation', () => {
   });
 
   it('is uniform on the box where Ψ is flat, and undefined for σ = 0', () => {
-    const field = { sample: () => 0 };
+    const field = sampler(() => 0);
     const box = { x0: -1, y0: -1, cell: 2 / 100, nx: 100, ny: 100 };
     expect(exactExpectation(box, compile('x^2'), field, { sigma: 0.5, psi: field.sample })).toBeCloseTo(1 / 3, 4);
     expect(exactExpectation(box, compile('x'), field, { sigma: 0, psi: field.sample })).toBeNaN();

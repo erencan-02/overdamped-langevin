@@ -16,6 +16,8 @@ import { InputController } from './ui/input';
 import { EquilibriumMonitor } from './analysis/equilibrium';
 import { ObservableMonitor } from './analysis/observable';
 import { ObservablePanel } from './ui/observablePanel';
+import { PotentialPanel } from './ui/potentialPanel';
+import { Potential } from './sim/potential';
 import { Recorder } from './record/recorder';
 import { ImageDropHandler, ImageImporter } from './image/importer';
 import { loadRecording, RecordingDropHandler } from './record/loader';
@@ -71,9 +73,26 @@ function main(): void {
   }
   const overlay = new Overlay(overlayCanvas);
   const input = new InputController(stage, camera, field, particles, state, random, history);
+  // Ψ for the simulation, the analysis and the pictures: the painted lattice or a formula.
+  const potential = new Potential(field);
+  input.paintBlocked = () => {
+    if (state.potentialMode !== 'formula') return false;
+    controls.showToast('Ψ is given by a formula. Turn the formula off in the Potential window to paint.', {
+      label: 'Paint',
+      run: () => usePaintedPotential(),
+    });
+    return true;
+  };
+  /** Switches Ψ back to the painted lattice (if a formula was in use). Returns true if it did. */
+  const usePaintedPotential = (): boolean => {
+    if (state.potentialMode !== 'formula') return false;
+    session.apply({ physics: { potentialMode: 'painted' } });
+    controls.showToast('Formula off: Ψ is the painted lattice again');
+    return true;
+  };
 
   // 2D ↔ 3D view (three.js, loaded on first use). The tools work in both.
-  const viewSwitch = new ViewSwitch(stage, field, particles, {
+  const viewSwitch = new ViewSwitch(stage, () => potential.display, particles, {
     view2D: () => camera.bounds(),
     onModeChange: (mode) => {
       state.view = mode;
@@ -125,7 +144,9 @@ function main(): void {
       controls.sync();
     },
     toggleCamera() {
-      // Allowed in 3D too: the camera image rises into a live relief.
+      // Allowed in 3D too: the camera image rises into a live relief. It paints Ψ, so a formula
+      // is turned off first.
+      if (!liveCamera.active) usePaintedPotential();
       liveCamera.toggle();
     },
     toggleRecording() {
@@ -157,6 +178,7 @@ function main(): void {
       controls.showToast('Particles cleared', { label: 'Undo', run: () => actions.undo() });
     },
     clearField() {
+      usePaintedPotential();
       liveCamera.stop();
       history.run('Clear Ψ', () => field.clear());
       controls.showToast('Potential cleared', { label: 'Undo', run: () => actions.undo() });
@@ -188,6 +210,7 @@ function main(): void {
       if (!busy.active) recordingInput.click();
     },
     preset(name: string) {
+      usePaintedPotential();
       liveCamera.stop();
       history.run('Preset', () => applyPreset(field, name as PresetName, camera.x, camera.y, random.get('presets')));
     },
@@ -195,11 +218,15 @@ function main(): void {
   const controls = new Controls(state, actions);
   // The settings card collapses like the analysis windows (open at start).
   new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {}).setOpen(true);
-  // Formulas in the side panels (e.g. ρ̂_h) are typeset with KaTeX, loaded without delaying start.
-  const sidePanels = document.querySelector<HTMLElement>('.left-col');
-  if (sidePanels) {
+  // Formulas in the side panels (ρ̂_h in the KL window) are typeset with KaTeX, which is loaded
+  // when that window is first opened.
+  let sideMathLoaded = false;
+  const typesetSidePanels = () => {
+    const sidePanels = document.querySelector<HTMLElement>('.left-col');
+    if (sideMathLoaded || !sidePanels) return;
+    sideMathLoaded = true;
     void import('./ui/helpMath').then((m) => m.renderMath(sidePanels, '.tex[data-tex]')).catch((err) => console.error(err));
-  }
+  };
 
   const recorder = new Recorder({
     field,
@@ -211,6 +238,7 @@ function main(): void {
       scheme: state.scheme,
       seed: state.seed,
       playing: state.playing,
+      potentialTex: state.potentialMode === 'formula' ? state.potentialTex : null,
     }),
     // Full settings for the metadata, so a recording restores the whole configuration.
     settings: () => session.capture(['physics', 'analysis', 'display', 'tools', 'analysisBox', 'view']),
@@ -220,7 +248,7 @@ function main(): void {
   });
 
   // Distance to equilibrium: KL between the kernel-smoothed particles and the Gibbs measure.
-  const monitor = new EquilibriumMonitor(field, particles);
+  const monitor = new EquilibriumMonitor(potential, particles);
   // Both analyses work on the same box; fitting it to the view restarts both curves.
   const fitBox = () => {
     monitor.setBox(camera.bounds());
@@ -228,10 +256,10 @@ function main(): void {
     klPanel.draw();
     observablePanel.draw();
   };
-  const klPanel = new KlPanel(monitor, { fitBox });
+  const klPanel = new KlPanel(monitor, { fitBox, opened: typesetSidePanels });
 
   // Weak convergence: E[f(X_t)] for a test function typed in LaTeX, against ∫ f dπ.
-  const observables = new ObservableMonitor(field, particles, monitor);
+  const observables = new ObservableMonitor(potential, particles, monitor);
   const observablePanel = new ObservablePanel(observables, {
     expression: () => state.observable,
     setExpression: (tex) => {
@@ -242,9 +270,23 @@ function main(): void {
 
   // Everything that can be captured, restored and replayed (see src/session/). Settings that
   // change the simulation come first, then Ψ, particles, the analysis box and the view.
+  // Ψ: painted, or a formula Ψ(t, x, y) with exact gradient.
+  const potentialPanel = new PotentialPanel({
+    mode: () => state.potentialMode,
+    expression: () => state.potentialTex,
+    // Entering or picking a formula means using it.
+    setExpression: (tex) => session.apply({ physics: { potentialTex: tex, potentialMode: 'formula' } }),
+    setMode: (mode) => {
+      if (mode === 'formula') liveCamera.stop(); // the camera paints the lattice
+      session.apply({ physics: { potentialMode: mode } });
+    },
+    apply: (compiled) => potential.setFormula(compiled),
+  });
+
   const syncUi = () => {
     controls.sync();
     observablePanel.sync(); // e.g. the test function of a restored recording
+    potentialPanel.sync(); // e.g. the potential of a restored recording
   };
   const session = new Session()
     .register(new PhysicsSettings(state, syncUi, particles, random))
@@ -322,7 +364,10 @@ function main(): void {
   const busy = new BusyOverlay();
   const importer = new ImageImporter(field, particles, camera, random, busy, {
     onStart: (target) => {
-      if (target === 'potential') liveCamera.stop(); // a dropped image replaces the live potential
+      if (target === 'potential') {
+        usePaintedPotential(); // an image is painted into the lattice: a formula is turned off
+        liveCamera.stop(); // a dropped image replaces the live potential
+      }
       input.cancel();
       controls.closeOverlays();
     },
@@ -386,7 +431,8 @@ function main(): void {
         state.playing = false; // stepping pauses, as in a video player
         controls.sync();
       }
-      particles.advance(field, DEFAULT_DT_MAX, state.sigma);
+      if (potentialPanel.pending) return; // the formula is not ready: never step with a wrong Ψ
+      particles.advance(potential.drift, DEFAULT_DT_MAX, state.sigma);
     },
     startHold: () => {
       if (playback.active) playback.play(performance.now());
@@ -567,11 +613,12 @@ function main(): void {
     input.update(dt);
     // Playback first: it notices if the user just altered the simulation and leaves.
     playback.update(now);
-    if (state.playing && particles.count > 0) {
+    // A time-dependent Ψ runs on even without particles; a formula that is still compiling waits.
+    if (state.playing && (particles.count > 0 || potential.timeDependent) && !potentialPanel.pending) {
       // Adapt the per-frame work budget to the measured cost of one drift evaluation so the
       // simulation never takes more than ~SIM_MS_PER_FRAME, whatever the device or scheme.
       const t0 = performance.now();
-      particles.advance(field, dt * state.speed, state.sigma, DEFAULT_DT_MAX, workBudget);
+      particles.advance(potential.drift, dt * state.speed, state.sigma, DEFAULT_DT_MAX, workBudget);
       const elapsed = performance.now() - t0;
       const work = particles.lastWork;
       if (work > 1000 && elapsed > 0) {
@@ -579,6 +626,10 @@ function main(): void {
         workBudget = Math.max(8000, Math.min(800_000, (SIM_MS_PER_FRAME * 1e6) / nsPerEval));
       }
     }
+
+    // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
+    potential.setTime(particles.time, state.sigma);
+    potential.updateDisplay(camera.bounds(), now);
 
     // Analysis first, so that the density drawn below belongs to this frame's particles.
     monitor.keepRunning = recorder.recording || state.showDensity;
@@ -605,11 +656,12 @@ function main(): void {
     // The 2D view is not drawn while the 3D view covers it completely.
     if (viewSwitch.show2D) {
       if (!renderer.gl.isContextLost()) {
-        renderer.render(camera, field, particles, {
+        renderer.render(camera, potential.display, particles, {
           grid: state.grid,
           trails: state.trails,
           contours: state.contours,
           forceField: state.forceField,
+          arrows: potential.analytic ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch } : undefined,
           density: state.showDensity ? monitor.density : null,
         });
       }
@@ -641,7 +693,7 @@ function main(): void {
       );
     }
     if (under) {
-      controls.updateReadout(under.x, under.y, field.sample(under.x, under.y), particles.time, particles.count, MAX_PARTICLES);
+      controls.updateReadout(under.x, under.y, potential.sample(under.x, under.y), particles.time, particles.count, MAX_PARTICLES);
     } else {
       controls.updateReadout(null, null, null, particles.time, particles.count, MAX_PARTICLES);
     }
@@ -659,6 +711,7 @@ function main(): void {
       liveCamera,
       monitor,
       observables,
+      potential,
       viewSwitch,
       input,
       recorder,

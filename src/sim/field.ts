@@ -27,6 +27,8 @@ export interface FieldOptions {
   cellSize: number;
   /** |Ψ| is clamped to this value. */
   cap: number;
+  /** Keep ∇Ψ up to date (default). A lattice that is only drawn can skip it. */
+  gradients?: boolean;
 }
 
 export class Chunk {
@@ -68,6 +70,7 @@ export class PotentialField {
   readonly h: number;
   readonly invH: number;
   readonly cap: number;
+  private readonly keepGradients: boolean;
   readonly chunks = new Map<number, Chunk>();
   /**
    * Keys of chunks whose rendered texture is stale. A chunk's texture also contains the first
@@ -104,6 +107,7 @@ export class PotentialField {
     this.h = opts.cellSize;
     this.invH = 1 / opts.cellSize;
     this.cap = opts.cap;
+    this.keepGradients = opts.gradients ?? true;
   }
 
   // ---------------------------------------------------------------- chunk access
@@ -269,6 +273,11 @@ export class PotentialField {
   }
 
   // ---------------------------------------------------------------- sampling
+
+  /** Ψ at n points into `out` (bilinear, as `sample`). */
+  samplePoints(xs: Float64Array, ys: Float64Array, n: number, out: Float64Array): void {
+    for (let i = 0; i < n; i++) out[i] = this.sample(xs[i], ys[i]);
+  }
 
   /** Bilinearly interpolated Ψ at world position (x, y). */
   sample(x: number, y: number): number {
@@ -546,7 +555,7 @@ export class PotentialField {
 
   /** Updates the gradient around changed nodes and marks the affected textures dirty. */
   private finishRegion(i0: number, j0: number, i1: number, j1: number): void {
-    this.updateGradient(i0 - 1, j0 - 1, i1 + 1, j1 + 1);
+    if (this.keepGradients) this.updateGradient(i0 - 1, j0 - 1, i1 + 1, j1 + 1);
     this.revision++;
     for (let cy = (j0 - 1) >> CHUNK_SHIFT; cy <= (j1 + 1) >> CHUNK_SHIFT; cy++) {
       for (let cx = (i0 - 1) >> CHUNK_SHIFT; cx <= (i1 + 1) >> CHUNK_SHIFT; cx++) {

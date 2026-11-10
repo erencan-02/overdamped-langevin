@@ -111,8 +111,9 @@ export class Scene3D implements Scene3DView {
   private cssWidth = 1;
   private cssHeight = 1;
 
+  /** `getField` gives the lattice to show: the painted Ψ, or the one a formula is drawn into. */
   constructor(
-    private readonly field: PotentialField,
+    private readonly getField: () => PotentialField,
     private readonly particles: ParticleSystem,
   ) {
     this.renderer = new WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -142,7 +143,7 @@ export class Scene3D implements Scene3DView {
     sun.position.copy(SUN);
     this.scene.add(sun);
 
-    this.height = new HeightField(field);
+    this.height = new HeightField(getField);
 
     // The surface: a flat grid of vertices that the GPU raises to Ψ and colours.
     const surfaceMaterial = new MeshLambertMaterial({
@@ -198,6 +199,10 @@ export class Scene3D implements Scene3DView {
     this.dots.frustumCulled = false;
     this.dots.setColorAt(0, this.palette[0]); // allocates instanceColor
     this.scene.add(this.dots);
+  }
+
+  private get field(): PotentialField {
+    return this.getField();
   }
 
   /**

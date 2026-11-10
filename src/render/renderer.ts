@@ -2,6 +2,7 @@ import { PALETTE_RGB } from '../config';
 import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
 import type { Camera } from '../view/camera';
+import type { DriftField } from '../sim/schemes';
 import { ARROW_FLOATS, arrowSpacing, buildArrows } from '../view/forceField';
 import { gridSpacing } from '../view/gridSpacing';
 import { createBuffer, createProgram, type Program } from './gl';
@@ -31,6 +32,11 @@ export interface RenderOptions {
   contours: boolean;
   /** Show the force field −∇Ψ as arrows. */
   forceField: boolean;
+  /**
+   * Where the arrows take −∇Ψ from (default: the drawn field), with counters that change with
+   * it. With a formula potential this is its exact gradient.
+   */
+  arrows?: DriftField & { readonly revision: number; readonly epoch: number };
   /** Smoothed empirical measure to draw, or null. */
   density: DensityImage | null;
 }
@@ -80,6 +86,7 @@ export class Renderer {
 
   private readonly textures = new Map<number, WebGLTexture>();
   private fieldEpoch = -1;
+  private fieldRef: PotentialField | null = null;
   private readonly scratch = new Float32Array(TEX_N * TEX_N);
 
   private dpr = 1;
@@ -200,7 +207,7 @@ export class Renderer {
     gl.enable(gl.BLEND);
     if (opts.grid) this.drawGrid(cam, scale, W, H);
     if (opts.density) this.drawDensity(cam, opts.density, scale, W, H);
-    if (opts.forceField) this.drawArrows(cam, field, scale, W, H);
+    if (opts.forceField) this.drawArrows(cam, opts.arrows ?? field, scale, W, H);
     this.uploadParticles(ps);
     // While the smoothed density is shown, particles and trails are faded so it reads through.
     const fade = opts.density ? 0.35 : 1;
@@ -216,8 +223,10 @@ export class Renderer {
 
   private syncTextures(field: PotentialField): void {
     const gl = this.gl;
-    if (field.epoch !== this.fieldEpoch) {
+    // A different field (painted ↔ formula) or a cleared one: all chunk textures are stale.
+    if (field !== this.fieldRef || field.epoch !== this.fieldEpoch) {
       this.dropFieldTextures();
+      this.fieldRef = field;
       this.fieldEpoch = field.epoch;
     }
     for (const c of field.chunks.values()) {
@@ -379,7 +388,13 @@ export class Renderer {
 
   // ---------------------------------------------------------------- force field
 
-  private drawArrows(cam: Camera, field: PotentialField, scale: number, W: number, H: number): void {
+  private drawArrows(
+    cam: Camera,
+    field: DriftField & { readonly revision: number; readonly epoch: number },
+    scale: number,
+    W: number,
+    H: number,
+  ): void {
     const gl = this.gl;
     // Arrows live in world space, so they are built for a padded area around the view and only
     // rebuilt when the view leaves it, the lattice spacing changes (zoom) or Ψ changes.

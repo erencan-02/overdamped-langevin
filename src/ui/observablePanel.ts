@@ -1,35 +1,26 @@
 import { loadTexParser, type TexParser } from '../analysis/latex';
 import type { ObservableMonitor } from '../analysis/observable';
 import { byId, CollapsiblePanel, formatValue } from './collapsiblePanel';
+import { FormulaInput } from './formulaInput';
 import { TimeSeriesPlot } from './timeSeriesPlot';
 
-/** Delay after the last keystroke before the input is parsed (no red flashes while typing). */
-const PARSE_DELAY_MS = 350;
-
 /**
- * The observables window: a LaTeX input for a test function f(x, y), validated as it is typed
- * (red outline and message on errors, a rendered preview otherwise), and a live plot of the
- * particle mean of f with its 95 % confidence band against the exact Gibbs expectation.
+ * The observables window: a LaTeX input for a test function f(x, y) (FormulaInput: validated as
+ * it is typed, with a rendered preview and examples), and a live plot of the particle mean of f
+ * with its 95 % confidence band against the exact Gibbs expectation.
  *
- * Parsing and the preview use the Compute Engine and KaTeX, both loaded when the window is
- * first opened. While the input is invalid, the last valid function stays in use (and in the
- * state).
+ * Nothing is computed while the window is closed (unless a recording needs it), and the formula
+ * engine and KaTeX are only loaded when it is first opened.
  */
 export class ObservablePanel {
-  private readonly input = byId<HTMLInputElement>('obs-input');
-  private readonly error = byId('obs-error');
-  private readonly preview = byId('obs-preview');
   private readonly value = byId('obs-value');
   private readonly info = byId('obs-info');
   private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('obs-plot'), 'linear');
   private readonly panel: CollapsiblePanel;
-  private timer = 0;
-  /** The expression the monitor currently uses ('' until the parser has loaded). */
-  private applied = '';
+  private readonly formula: FormulaInput;
   private parser: TexParser | null = null;
   private loadFailed = false;
   private loadStarted = false;
-  private katex: typeof import('./helpMath') | null = null;
 
   constructor(
     private readonly monitor: ObservableMonitor,
@@ -41,6 +32,16 @@ export class ObservablePanel {
       fitBox(): void;
     },
   ) {
+    this.formula = new FormulaInput(byId('observable-body'), 'f(x,y) = ', {
+      tryUse: (tex) => {
+        const r = this.parser!.parse(tex);
+        if (!r.ok) return r.message;
+        this.monitor.setFunction(r.fn);
+        this.draw();
+        return null;
+      },
+      committed: (tex) => this.actions.setExpression(tex),
+    });
     this.panel = new CollapsiblePanel(
       { section: 'observable', toggle: 'observable-toggle', body: 'observable-body' },
       (open) => {
@@ -54,29 +55,6 @@ export class ObservablePanel {
         }
       },
     );
-    this.input.addEventListener('input', () => {
-      window.clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => this.commit(), PARSE_DELAY_MS);
-    });
-    this.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        this.commit();
-      } else if (e.key === 'Escape') {
-        // Give up the edit: back to the expression in use (and nothing else reacts to Escape).
-        e.stopPropagation();
-        if (this.applied) this.input.value = this.applied;
-        this.commit();
-        this.input.blur();
-      }
-    });
-    this.input.addEventListener('blur', () => this.commit());
-    for (const b of document.querySelectorAll<HTMLButtonElement>('.obs-examples button')) {
-      b.addEventListener('click', () => {
-        this.input.value = b.dataset.tex ?? '';
-        this.commit();
-      });
-    }
     byId('obs-fit').addEventListener('click', () => actions.fitBox());
     byId('obs-reset').addEventListener('click', () => {
       this.monitor.reset();
@@ -84,33 +62,24 @@ export class ObservablePanel {
     });
     new ResizeObserver(() => this.draw()).observe(byId('obs-plot'));
 
-    this.input.value = actions.expression();
+    this.formula.input.value = actions.expression();
     this.panel.setOpen(false);
   }
 
   /** Takes over an expression set from outside (a restored recording). */
   sync(): void {
-    const tex = this.actions.expression();
-    if (tex === this.applied) return;
-    if (document.activeElement !== this.input) this.input.value = tex;
-    if (this.parser) this.use(tex);
-    // Otherwise the input holds it until the parser has loaded.
+    this.formula.setValue(this.actions.expression());
   }
 
   /** Loads the parser and KaTeX (once), then starts using the expression in the input. */
   private load(): void {
+    this.formula.loadPreview();
     if (this.loadStarted) return;
     this.loadStarted = true;
-    import('./helpMath')
-      .then((m) => {
-        this.katex = m;
-        this.renderPreview();
-      })
-      .catch((err) => console.error(err)); // the preview is optional
     loadTexParser()
       .then((parser) => {
         this.parser = parser;
-        this.commit();
+        this.formula.setReady();
         this.draw();
       })
       .catch((err) => {
@@ -118,46 +87,6 @@ export class ObservablePanel {
         this.loadFailed = true;
         this.draw();
       });
-  }
-
-  /** Parses the input: shows the error, or starts using the new function. */
-  private commit(): void {
-    window.clearTimeout(this.timer);
-    if (!this.parser) return;
-    const tex = this.input.value.trim();
-    if (tex === this.applied) {
-      this.showError(null);
-      return;
-    }
-    if (this.use(tex)) this.actions.setExpression(tex);
-  }
-
-  /** Starts using `tex` if it is valid; otherwise shows why not. */
-  private use(tex: string): boolean {
-    const r = this.parser!.parse(tex);
-    if (!r.ok) {
-      this.showError(r.message);
-      return false;
-    }
-    this.showError(null);
-    this.applied = tex;
-    this.monitor.setFunction(r.fn);
-    this.renderPreview();
-    this.draw();
-    return true;
-  }
-
-  private showError(message: string | null): void {
-    this.input.setAttribute('aria-invalid', String(message !== null));
-    this.error.hidden = message === null;
-    this.error.textContent = message ?? '';
-    // The preview keeps showing the function in use, dimmed while the input differs from it.
-    this.preview.classList.toggle('stale', message !== null);
-  }
-
-  private renderPreview(): void {
-    if (!this.katex || !this.applied) return;
-    this.katex.renderTex(this.preview, `f(x,y) = ${this.applied}`);
   }
 
   /** Updates the readouts and the plot from the monitor's latest sample. */
@@ -170,7 +99,7 @@ export class ObservablePanel {
         this.info.textContent = 'The formula engine could not be loaded. Check the connection and reload.';
       } else if (!this.parser) {
         this.info.textContent = 'Loading the formula engine…';
-      } else if (!this.applied) {
+      } else if (!this.formula.applied) {
         this.info.textContent = 'Enter a valid function to start.';
       } else if (!s) {
         this.info.textContent = 'Waiting for particles…';

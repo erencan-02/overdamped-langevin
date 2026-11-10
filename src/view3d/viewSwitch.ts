@@ -72,7 +72,8 @@ export class ViewSwitch {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly field: PotentialField,
+    /** The lattice to show in 3D (the painted Ψ, or the one a formula is drawn into). */
+    private readonly field: () => PotentialField,
     private readonly particles: ParticleSystem,
     private readonly hooks: ViewSwitchHooks,
   ) {}

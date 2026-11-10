@@ -1,15 +1,19 @@
 /**
- * Test functions f(x, y) written in LaTeX, parsed and compiled by the Cortex Compute Engine
- * (https://cortexjs.io/compute-engine/), which runs entirely in the browser.
+ * Formulas written in LaTeX, parsed and compiled by the Cortex Compute Engine
+ * (https://cortexjs.io/compute-engine/), which runs entirely in the browser:
+ *
+ *  - test functions f(x, y) of the observables window (`parse`), and
+ *  - potentials Ψ(t, x, y) with their exact gradient, derived symbolically (`parsePotential`).
  *
  * The engine turns LaTeX into a MathJSON tree and compiles that tree to JavaScript. This module
- * only adapts it to the app: it checks that the tree is a real-valued function of the allowed
+ * adapts it to the app: it checks that the tree is a real-valued function of the allowed
  * symbols, maps a few notations the engine reads differently (indicator functions, Ψ(x, y),
- * an "f(x, y) =" prefix), turns the engine's parse errors into messages for the user, and
- * evaluates f at many points at once with the engine's batch evaluator.
+ * "f(x, y) =" or "Ψ(t, x, y) =" prefixes), turns the engine's parse errors into messages for the
+ * user, and evaluates formulas at many points at once with the engine's batch evaluator.
  *
- * Symbols: x, y, r = √(x²+y²), \theta = atan2(y, x), \sigma (diffusivity), \Psi (potential at
- * the point), plus the engine's constants (\pi, e, …).
+ * Every compiled formula is simplified first and then checked against the engine's own
+ * arbitrary-precision evaluation at a few sample points, so a compiler mistake can never give
+ * silently wrong numbers (version 0.185 compiles −(√(x²+y²))² as −x² + y², for example).
  *
  * The engine (~0.75 MB minified) is loaded on demand with `loadTexParser()`.
  */
@@ -31,86 +35,310 @@ export type ParseResult =
   | { ok: true; fn: CompiledObservable; usesPsi: boolean; usesSigma: boolean }
   | { ok: false; message: string };
 
+/** A compiled potential Ψ(t, x, y) and its exact gradient. */
+export interface CompiledPotential {
+  /** Ψ depends on the time t (then also its gradient). */
+  readonly timeDependent: boolean;
+  /** Ψ depends on σ. */
+  readonly usesSigma: boolean;
+  /** Ψ(t, xs[i], ys[i]) for i < n, into `out`. */
+  value(xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array): void;
+  /** ∂Ψ/∂x and ∂Ψ/∂y at (t, xs[i], ys[i]) for i < n, into gx and gy. */
+  gradient(
+    xs: Float64Array,
+    ys: Float64Array,
+    n: number,
+    t: number,
+    sigma: number,
+    gx: Float64Array,
+    gy: Float64Array,
+  ): void;
+}
+
+export type PotentialParseResult = { ok: true; potential: CompiledPotential } | { ok: false; message: string };
+
 export interface TexParser {
+  /** A test function f(x, y) (observables). */
   parse(tex: string): ParseResult;
+  /** A potential Ψ(t, x, y), differentiated symbolically. */
+  parsePotential(tex: string): PotentialParseResult;
 }
 
 const SCALAR = 'Output must be a scalar';
-const ALLOWED = new Set(['x', 'y', 'r', 'theta', 'sigma', 'Psi']);
+/** Symbols of test functions. */
+const OBSERVABLE_SYMBOLS = new Set(['x', 'y', 'r', 'theta', 'sigma', 'Psi']);
+/** Symbols of potentials. */
+const POTENTIAL_SYMBOLS = new Set(['x', 'y', 'r', 'theta', 'sigma', 't']);
+/** Inputs given per point (columns); the others are the same for all points (scalars). */
+const COLUMNS = new Set(['x', 'y', 'r', 'theta', 'Psi']);
 /** MathJSON heads whose value is a collection, not a number. */
 const COLLECTIONS = new Set(['Tuple', 'List', 'Matrix', 'Sequence', 'Pair', 'Set', 'Range', 'Interval']);
 /** MathJSON heads whose value is true/false. */
 const CONDITIONS = new Set([
   'Less', 'LessEqual', 'Greater', 'GreaterEqual', 'Equal', 'NotEqual', 'And', 'Or', 'Not', 'Element', 'NotElement',
 ]);
+/** Heads left in a derivative the engine could not work out. */
+const UNRESOLVED_DERIVATIVE = new Set(['D', 'Derivative', 'Apply', 'ND']);
 /** The symbols the engine reads \mathbf{1} and \mathbb{1} as. */
 const ONE = new Set(['one_bold', 'one_doublestruck']);
-/** Sample point used to check that the result is a number. */
-const PROBE = { x: 0.37, y: -0.61, r: Math.hypot(0.37, -0.61), theta: Math.atan2(-0.61, 0.37), sigma: 0.6, Psi: 0.4 };
+
+/** Points at which every compiled formula is checked (away from the axes and the origin). */
+const CHECK_POINTS: readonly [number, number][] = [
+  [0.37, -0.61],
+  [1.3, 0.8],
+  [-0.9, 1.7],
+  [-1.6, -0.45],
+  [2.2, 0.15],
+  [0.05, -1.25],
+];
 
 /** An error with a message meant for the user. */
 class TexError extends Error {}
 
 let loading: Promise<TexParser> | null = null;
 
+type Engine = InstanceType<typeof import('@cortex-js/compute-engine').ComputeEngine>;
+type Compile = typeof import('@cortex-js/compute-engine').compile;
+type Boxed = ReturnType<Engine['box']>;
+
 /** Loads the Compute Engine (once) and returns a parser that uses it. */
 export function loadTexParser(): Promise<TexParser> {
   loading ??= import('@cortex-js/compute-engine').then(({ ComputeEngine, compile }) => {
     const ce = new ComputeEngine();
     // The inputs are real numbers (the compiler needs their types, e.g. for f = x).
-    for (const name of ALLOWED) ce.declare(name, 'real');
+    for (const name of new Set([...OBSERVABLE_SYMBOLS, ...POTENTIAL_SYMBOLS])) ce.declare(name, 'real');
+    const guard = <T>(build: () => T): T | { ok: false; message: string } => {
+      try {
+        return build();
+      } catch (err) {
+        if (err instanceof TexError) return { ok: false, message: err.message };
+        console.error(err);
+        return { ok: false, message: 'This formula cannot be evaluated.' };
+      }
+    };
     return {
-      parse(tex: string): ParseResult {
-        try {
-          return { ok: true, ...build(ce, compile, tex) };
-        } catch (err) {
-          if (err instanceof TexError) return { ok: false, message: err.message };
-          console.error(err);
-          return { ok: false, message: 'This formula cannot be evaluated.' };
-        }
-      },
+      parse: (tex: string) => guard(() => buildObservable(ce, compile, tex)),
+      parsePotential: (tex: string) => guard(() => buildPotential(ce, compile, tex)),
     };
   });
   return loading;
 }
 
-type Engine = InstanceType<typeof import('@cortex-js/compute-engine').ComputeEngine>;
-type Compile = typeof import('@cortex-js/compute-engine').compile;
+// ------------------------------------------------------------------ test functions
 
-function build(ce: Engine, compile: Compile, src: string) {
-  const tex = src.trim();
-  if (tex.length > 500) throw new TexError('The expression is too long (max. 500 characters).');
-  if (tex === '') throw new TexError('Enter a function of x and y, e.g. x^2 + y^2.');
-
+function buildObservable(ce: Engine, compile: Compile, src: string): ParseResult {
   // Ψ is a number here (the potential at the point): Ψ(x, y) means just Ψ, and any other
   // argument is an error rather than a product.
-  const source = tex.replace(/\\Psi\s*(?:\\left\s*)?\(\s*x\s*,\s*y\s*(?:\\right\s*)?\)/g, '\\Psi ');
-  if (/\\Psi\s*(?:\\left\s*)?\(/.test(source)) throw new TexError('\\Psi can only be evaluated at (x, y).');
+  let tex = src.trim();
+  tex = tex.replace(/\\Psi\s*(?:\\left\s*)?\(\s*x\s*,\s*y\s*(?:\\right\s*)?\)/g, '\\Psi ');
+  if (/\\Psi\s*(?:\\left\s*)?\(/.test(tex)) throw new TexError('\\Psi can only be evaluated at (x, y).');
+  const expr = readFormula(ce, tex, {
+    allowed: OBSERVABLE_SYMBOLS,
+    definitions: ['"f"', '["f","x","y"]'],
+    name: 'f',
+    hint: 'f may depend on x, y (and r, \\theta, \\sigma, \\Psi)',
+    empty: 'Enter a function of x and y, e.g. x^2 + y^2.',
+  });
+  const f = compileChecked(compile, expr);
+  const fn: CompiledObservable = {
+    evaluate(xs, ys, n, ctx, psiValues) {
+      const out = new Float64Array(n);
+      if (n === 0) return out;
+      const x = xs.subarray(0, n);
+      const y = ys.subarray(0, n);
+      const inputs: Record<string, Float64Array | number> = { x, y, sigma: ctx.sigma };
+      if (f.uses.has('r')) inputs.r = column(n, (i) => Math.hypot(x[i], y[i]));
+      if (f.uses.has('theta')) inputs.theta = column(n, (i) => Math.atan2(y[i], x[i]));
+      if (f.uses.has('Psi')) {
+        inputs.Psi = psiValues && psiValues.length >= n ? psiValues.subarray(0, n) : column(n, (i) => ctx.psi(x[i], y[i]));
+      }
+      f.evaluate(inputs, n, out);
+      return out;
+    },
+  };
+  return { ok: true, fn, usesPsi: f.uses.has('Psi'), usesSigma: f.uses.has('sigma') };
+}
 
-  const parsed = ce.parse(source);
-  const raw: Json = parsed.json;
+// ------------------------------------------------------------------ potentials
+
+function buildPotential(ce: Engine, compile: Compile, src: string): PotentialParseResult {
+  // An optional "\Psi(t, x, y) =", "\Psi(x, y) =" or "\Psi =" in front.
+  const tex = src
+    .trim()
+    .replace(/^\\Psi\s*(?:\\left\s*)?\(\s*(?:t\s*,\s*)?x\s*,\s*y\s*(?:\\right\s*)?\)\s*=/, '')
+    .replace(/^\\Psi\s*=/, '');
+  if (/\\Psi/.test(tex)) throw new TexError('\\Psi cannot appear in its own formula.');
+  const expr = readFormula(ce, tex, {
+    allowed: POTENTIAL_SYMBOLS,
+    definitions: [],
+    name: '\\Psi',
+    hint: '\\Psi may depend on x, y, t (and r, \\theta, \\sigma)',
+    empty: 'Enter a potential, e.g. \\frac{x^2 + y^2}{2}.',
+  });
+  const psi = compileChecked(compile, expr);
+
+  // Exact gradient. r = √(x² + y²) and θ = atan2(y, x) are treated as variables of their own and
+  // combined by the chain rule: ∂Ψ/∂x = Ψ_x + Ψ_r·x/r − Ψ_θ·y/r², ∂Ψ/∂y = Ψ_y + Ψ_r·y/r + Ψ_θ·x/r².
+  // (Substituting r = √(x² + y²) instead would hit the compiler issue mentioned above.)
+  const spatial = ['x', 'y', 'r', 'theta'].filter((v) => psi.uses.has(v));
+  const d: Record<string, CheckedFormula> = {};
+  for (const v of spatial) {
+    const dv = ce.box(['D', expr.json, v] as Parameters<Engine['box']>[0]).evaluate();
+    if (!dv.isValid || hasHead(dv.json, UNRESOLVED_DERIVATIVE)) {
+      throw new TexError('\\Psi must be differentiable: the gradient of this formula could not be derived.');
+    }
+    d[v] = compileChecked(compile, dv);
+  }
+
+  const columns = (xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number) => {
+    const x = xs.subarray(0, n);
+    const y = ys.subarray(0, n);
+    const inputs: Record<string, Float64Array | number> = { x, y, t, sigma };
+    if (psi.uses.has('r')) inputs.r = column(n, (i) => Math.hypot(x[i], y[i]));
+    if (psi.uses.has('theta')) inputs.theta = column(n, (i) => Math.atan2(y[i], x[i]));
+    return inputs;
+  };
+  const tmp = { a: new Float64Array(0) };
+  const scratch = (n: number) => (tmp.a.length >= n ? tmp.a : (tmp.a = new Float64Array(n)));
+
+  const potential: CompiledPotential = {
+    timeDependent: psi.uses.has('t'),
+    usesSigma: psi.uses.has('sigma'),
+    value(xs, ys, n, t, sigma, out) {
+      if (n > 0) psi.evaluate(columns(xs, ys, n, t, sigma), n, out);
+    },
+    gradient(xs, ys, n, t, sigma, gx, gy) {
+      if (n === 0) return;
+      const inputs = columns(xs, ys, n, t, sigma);
+      if (d.x) d.x.evaluate(inputs, n, gx);
+      else gx.fill(0, 0, n);
+      if (d.y) d.y.evaluate(inputs, n, gy);
+      else gy.fill(0, 0, n);
+      const r = inputs.r as Float64Array | undefined;
+      if (d.r && r) {
+        const dr = scratch(n);
+        d.r.evaluate(inputs, n, dr);
+        for (let i = 0; i < n; i++) {
+          if (r[i] > 0) {
+            gx[i] += (dr[i] * xs[i]) / r[i];
+            gy[i] += (dr[i] * ys[i]) / r[i];
+          }
+        }
+      }
+      if (d.theta) {
+        const rr = r ?? column(n, (i) => Math.hypot(xs[i], ys[i]));
+        const dth = scratch(n);
+        d.theta.evaluate(inputs, n, dth);
+        for (let i = 0; i < n; i++) {
+          const r2 = rr[i] * rr[i];
+          if (r2 > 0) {
+            gx[i] -= (dth[i] * ys[i]) / r2;
+            gy[i] += (dth[i] * xs[i]) / r2;
+          }
+        }
+      }
+    },
+  };
+  checkGradient(potential);
+  return { ok: true, potential };
+}
+
+/**
+ * Compares the assembled gradient with central differences of Ψ at the check points, which
+ * catches a wrong derivative as well as a wrong chain rule.
+ */
+function checkGradient(p: CompiledPotential): void {
+  const n = CHECK_POINTS.length;
+  const xs = Float64Array.from(CHECK_POINTS, (q) => q[0]);
+  const ys = Float64Array.from(CHECK_POINTS, (q) => q[1]);
+  const gx = new Float64Array(n);
+  const gy = new Float64Array(n);
+  const t = 0.37;
+  const sigma = 0.6;
+  p.gradient(xs, ys, n, t, sigma, gx, gy);
+  const h = 1e-5;
+  const shifted = (dx: number, dy: number) => {
+    const out = new Float64Array(n);
+    p.value(
+      xs.map((v) => v + dx),
+      ys.map((v) => v + dy),
+      n,
+      t,
+      sigma,
+      out,
+    );
+    return out;
+  };
+  const xp = shifted(h, 0);
+  const xm = shifted(-h, 0);
+  const yp = shifted(0, h);
+  const ym = shifted(0, -h);
+  for (let i = 0; i < n; i++) {
+    const fdx = (xp[i] - xm[i]) / (2 * h);
+    const fdy = (yp[i] - ym[i]) / (2 * h);
+    if (!Number.isFinite(fdx) || !Number.isFinite(fdy)) continue; // undefined there (e.g. √x at x < 0)
+    const scale = 1 + Math.abs(fdx) + Math.abs(fdy);
+    if (!(Math.abs(gx[i] - fdx) <= 1e-4 * scale && Math.abs(gy[i] - fdy) <= 1e-4 * scale)) {
+      throw new TexError('\\Psi must be differentiable: its derived gradient does not match the formula.');
+    }
+  }
+}
+
+// ------------------------------------------------------------------ shared: read and compile
+
+interface FormulaSpec {
+  allowed: Set<string>;
+  /** MathJSON (stringified) of left-hand sides that may precede "=" (e.g. f(x, y)). */
+  definitions: string[];
+  name: string;
+  hint: string;
+  empty: string;
+}
+
+/** Parses LaTeX into a valid, scalar expression of the allowed symbols (or throws a TexError). */
+function readFormula(ce: Engine, src: string, spec: FormulaSpec): Boxed {
+  const tex = src.trim();
+  if (tex.length > 500) throw new TexError('The expression is too long (max. 500 characters).');
+  if (tex === '') throw new TexError(spec.empty);
+
+  const raw: Json = ce.parse(tex).json;
   const error = findError(raw, null);
   if (error) throw new TexError(error);
 
-  let json = stripDefinition(raw);
+  let json = stripDefinition(raw, spec);
   json = adapt(json);
   checkScalar(json);
 
   const expr = ce.box(json as Parameters<Engine['box']>[0]);
   if (!expr.isValid) throw new TexError('This formula cannot be evaluated.');
-  const unknowns = expr.unknowns.filter((s) => !ALLOWED.has(s));
+  const unknowns = expr.unknowns.filter((s) => !spec.allowed.has(s));
   if (unknowns.length) {
     const name = unknowns[0];
     throw new TexError(
       /_bold$/.test(name)
         ? `${SCALAR}: bold letters denote vectors. Write x and y separately.`
-        : `Unknown variable "${name}": f may depend on x, y (and r, \\theta, \\sigma, \\Psi).`,
+        : `Unknown variable "${name}": ${spec.hint}.`,
     );
   }
+  return expr;
+}
 
+interface CheckedFormula {
+  /** Free symbols of the formula. */
+  uses: Set<string>;
+  /** The formula at n points into `out`; columns hold one value per point, scalars one in all. */
+  evaluate(inputs: Record<string, Float64Array | number>, n: number, out: Float64Array): void;
+}
+
+/**
+ * Simplifies and compiles `expr`, checks that it gives numbers, and that the compiled code
+ * agrees with the engine's own numeric evaluation of the original expression at CHECK_POINTS.
+ */
+function compileChecked(compile: Compile, expr: Boxed): CheckedFormula {
+  const uses = new Set(expr.unknowns);
   let compiled: ReturnType<Compile>;
   try {
-    compiled = compile(expr, { fallback: false });
+    compiled = compile(expr.simplify(), { fallback: false });
   } catch (err) {
     const m = /Unknown operator `([^`]+)`/.exec(String((err as Error).message));
     throw new TexError(m ? `Unknown function "${m[1]}".` : 'This formula cannot be evaluated.');
@@ -118,44 +346,63 @@ function build(ce: Engine, compile: Compile, src: string) {
   const run = compiled.run?.bind(compiled);
   const broadcast = compiled.broadcast?.bind(compiled);
   if (!run || !broadcast) throw new TexError('This formula cannot be evaluated.');
-  // A function symbol on its own (\sin), a list or a condition does not give a number.
-  const probe = run({ ...PROBE });
-  if (typeof probe !== 'number') {
-    throw new TexError(
-      typeof probe === 'function'
-        ? 'A function needs an argument, e.g. \\sin(x).'
-        : typeof probe === 'boolean'
-          ? `${SCALAR}, not a true/false condition. For an indicator write \\mathbf{1}_{…}.`
-          : `${SCALAR}.`,
-    );
-  }
 
-  const used = new Set(expr.unknowns);
-  const usesPsi = used.has('Psi');
-  const usesSigma = used.has('sigma');
-  const usesR = used.has('r');
-  const usesTheta = used.has('theta');
-  const constant = !used.has('x') && !used.has('y') && !usesR && !usesTheta && !usesPsi;
+  CHECK_POINTS.forEach(([x, y], k) => {
+    const at: Record<string, number> = {
+      x,
+      y,
+      r: Math.hypot(x, y),
+      theta: Math.atan2(y, x),
+      sigma: 0.6,
+      t: 0.37 + 0.11 * k,
+      Psi: 0.4 - 0.13 * k,
+    };
+    const got = run({ ...at });
+    // A function symbol on its own (\sin), a list or a condition does not give a number.
+    if (typeof got !== 'number') {
+      throw new TexError(
+        typeof got === 'function'
+          ? 'A function needs an argument, e.g. \\sin(x).'
+          : typeof got === 'boolean'
+            ? `${SCALAR}, not a true/false condition. For an indicator write \\mathbf{1}_{…}.`
+            : `${SCALAR}.`,
+      );
+    }
+    const values: Record<string, number> = {};
+    for (const s of uses) if (s in at) values[s] = at[s];
+    const want = numericValue(expr.subs(values).N());
+    const bothUndefined = !Number.isFinite(got) && !Number.isFinite(want);
+    if (!bothUndefined && !(Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want)))) {
+      throw new TexError(
+        'The formula engine evaluates this expression inconsistently. Please write it differently ' +
+          '(e.g. expand powers of square roots).',
+      );
+    }
+  });
 
-  const fn: CompiledObservable = {
-    evaluate(xs, ys, n, ctx, psiValues) {
-      if (n === 0) return new Float64Array(0);
-      if (constant) {
-        return new Float64Array(n).fill(Number(run({ sigma: ctx.sigma })));
+  const columns = [...uses].filter((s) => COLUMNS.has(s));
+  return {
+    uses,
+    evaluate(inputs, n, out) {
+      if (columns.length === 0) {
+        // Same value everywhere (e.g. a derivative that is constant).
+        const scalars: Record<string, number> = {};
+        for (const s of uses) scalars[s] = inputs[s] as number;
+        out.fill(Number(run(scalars)), 0, n);
+        return;
       }
-      const x = xs.length === n ? xs : xs.subarray(0, n);
-      const y = ys.length === n ? ys : ys.subarray(0, n);
-      const inputs: Record<string, Float64Array | number> = { x, y };
-      if (usesSigma) inputs.sigma = ctx.sigma;
-      if (usesR) inputs.r = column(n, (i) => Math.hypot(x[i], y[i]));
-      if (usesTheta) inputs.theta = column(n, (i) => Math.atan2(y[i], x[i]));
-      if (usesPsi) {
-        inputs.Psi = psiValues && psiValues.length >= n ? psiValues.subarray(0, n) : column(n, (i) => ctx.psi(x[i], y[i]));
-      }
-      return broadcast(inputs);
+      const used: Record<string, Float64Array | number> = {};
+      for (const s of uses) used[s] = inputs[s];
+      out.set(broadcast(used).subarray(0, n));
     },
   };
-  return { fn, usesPsi, usesSigma };
+}
+
+/** A real number from an engine value; NaN for complex or non-numeric results. */
+function numericValue(v: { re: number; im: number }): number {
+  const re = Number(v.re);
+  const im = Number(v.im);
+  return Number.isFinite(im) && im !== 0 ? Number.NaN : re;
 }
 
 function column(n: number, value: (i: number) => number): Float64Array {
@@ -169,6 +416,12 @@ function column(n: number, value: (i: number) => number): Float64Array {
 const isArr = (j: Json): j is Json[] => Array.isArray(j);
 /** MathJSON strings are quoted: "'text'". */
 const unquote = (s: unknown) => (typeof s === 'string' ? s.replace(/^'(.*)'$/s, '$1') : '');
+
+function hasHead(j: Json, heads: Set<string>): boolean {
+  if (!isArr(j)) return false;
+  if (typeof j[0] === 'string' && heads.has(j[0])) return true;
+  return j.some((e, k) => k > 0 && hasHead(e, heads)) || (isArr(j[0]) && hasHead(j[0], heads));
+}
 
 /** The first parse error in the tree, as a message for the user. */
 function findError(j: Json, parent: string | null): string | null {
@@ -210,11 +463,10 @@ function findError(j: Json, parent: string | null): string | null {
 }
 
 /** "f(x, y) = …" or "f = …" → "…"; any other equation is an error. */
-function stripDefinition(j: Json): Json {
+function stripDefinition(j: Json, spec: FormulaSpec): Json {
   if (!isArr(j) || j[0] !== 'Equal') return j;
-  const lhs = JSON.stringify(j[1]);
-  if (j.length === 3 && (lhs === '"f"' || lhs === '["f","x","y"]')) return j[2];
-  throw new TexError('Write only the expression for f, not an equation.');
+  if (j.length === 3 && spec.definitions.includes(JSON.stringify(j[1]))) return j[2];
+  throw new TexError(`Write only the expression for ${spec.name}, not an equation.`);
 }
 
 /** Rewrites the notations the engine reads differently from the app. */

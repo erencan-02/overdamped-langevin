@@ -26,7 +26,7 @@
     <!-- Title -->
     <div class="brand card">
       <div class="brand-title">Langevin Dynamics</div>
-      <div class="brand-eq">dX<sub>t</sub> = −∇Ψ(X<sub>t</sub>) dt + σ dW<sub>t</sub></div>
+      <div class="brand-eq">dX<sub>t</sub> = −∇Ψ(t, X<sub>t</sub>) dt + σ dW<sub>t</sub></div>
     </div>
 
     <!-- Main toolbar -->
@@ -109,6 +109,44 @@
 
     <!-- Parameters -->
     <div class="left-col">
+      <!-- Potential: painted lattice or a formula Ψ(t, x, y) with exact gradient -->
+      <section class="analysis card collapsed" id="potential" aria-label="Potential">
+        <button class="analysis-head" id="potential-toggle" type="button" aria-expanded="false" aria-controls="potential-body">
+          <span class="analysis-title">Potential Ψ</span>
+          <output id="psi-mode"></output>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="analysis-body" id="potential-body" hidden>
+          <label class="switch-row">
+            <input type="checkbox" id="psi-use-formula" />
+            <span class="switch" aria-hidden="true"></span>
+            <span>Use a formula instead of painting</span>
+          </label>
+          <div class="field obs-field">
+            <label class="field-head" for="psi-input"><span>Ψ(t, x, y)</span><span class="field-note">LaTeX</span></label>
+            <input
+              type="text"
+              id="psi-input"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              aria-describedby="psi-error"
+            />
+            <div class="obs-error" id="psi-error" role="alert" hidden></div>
+            <div class="obs-preview" aria-hidden="true"></div>
+            <div class="obs-examples" role="group" aria-label="Example potentials">
+              <button type="button" data-tex="\frac{x^2 + y^2}{2}">harmonic</button>
+              <button type="button" data-tex="\frac{(x^2 - 4)^2}{16} + \frac{y^2}{2}">double well</button>
+              <button type="button" data-tex="\frac{(r^2 - 4)^2}{16}">ring</button>
+              <button type="button" data-tex="-\cos(2x)\cos(2y) + \frac{r^2}{20}">egg crate</button>
+              <button type="button" data-tex="\frac{(x - 2\cos t)^2 + (y - 2\sin t)^2}{2}">moving well (t)</button>
+              <button type="button" data-tex="\frac{(x^2 - 4)^2}{16} + \frac{y^2}{2} + \frac{x \sin t}{2}">rocking (t)</button>
+            </div>
+          </div>
+          <div class="kl-info" id="psi-info"></div>
+        </div>
+      </section>
+
       <!-- Custom observable: E[f(X_t)] against the Gibbs expectation -->
       <section class="analysis card collapsed" id="observable" aria-label="Custom observable">
         <button class="analysis-head" id="observable-toggle" type="button" aria-expanded="false" aria-controls="observable-body">
@@ -129,7 +167,7 @@
               aria-describedby="obs-error"
             />
             <div class="obs-error" id="obs-error" role="alert" hidden></div>
-            <div class="obs-preview" id="obs-preview" aria-hidden="true"></div>
+            <div class="obs-preview" aria-hidden="true"></div>
             <div class="obs-examples" role="group" aria-label="Examples">
               <button type="button" data-tex="x">x</button>
               <button type="button" data-tex="x^2 + y^2">r²</button>
@@ -343,7 +381,7 @@
           <li>
             <h3>The dynamics</h3>
             <p>Every particle moves independently according to the stochastic differential equation</p>
-            <div class="tex-display" data-tex="dX_t = -\nabla\Psi(X_t)\,dt + \sigma\,dW_t, \qquad X_t \in \mathbb{R}^2" data-display></div>
+            <div class="tex-display" data-tex="dX_t = -\nabla\Psi(t, X_t)\,dt + \sigma\,dW_t, \qquad X_t \in \mathbb{R}^2" data-display></div>
             <p>
               The drift <span class="tex" data-tex="-\nabla\Psi"></span> pushes it downhill (<span class="tex" data-tex="\Psi>0"></span>: warm hills,
               <span class="tex" data-tex="\Psi<0"></span>: cool valleys, <span class="tex" data-tex="|\Psi|"></span> capped at <span id="help-cap"></span>), and the Brownian
@@ -360,6 +398,8 @@
               Low <span class="tex" data-tex="\Psi"></span> means high probability, and <span class="tex" data-tex="\sigma^2/2"></span> plays the role of the temperature
               <span class="tex" data-tex="k_B T"></span>. Wherever nothing is painted <span class="tex" data-tex="\Psi = 0"></span>, so <span class="tex" data-tex="Z"></span> would be infinite on the whole
               plane. Everything is therefore restricted to the dashed <i>KL box</i> <span class="tex" data-tex="B"></span> and renormalised there.
+              If <span class="tex" data-tex="\Psi"></span> depends on time, <span class="tex" data-tex="\pi_t"></span> is the Gibbs measure of the current
+              <span class="tex" data-tex="\Psi(t, \cdot)"></span>, which the particles follow with a delay.
             </p>
           </li>
           <li>
@@ -474,6 +514,14 @@
               <li><b>Shift + drag</b> to spray many</li>
               <li><b>Right-drag</b> a rectangle to fill it with a grid of particles (spacing in the panel)</li>
               <li><b>Right click</b> a particle to remove it</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Potential Ψ</h3>
+            <ul>
+              <li><b>Painted</b> (default): brush, presets, images and the camera, on a lattice with |Ψ| ≤ 5</li>
+              <li><b>Formula</b> (Potential window): type Ψ(t, x, y) in LaTeX, e.g. <code>\frac{x^2+y^2}{2}</code>; the gradient is derived exactly, with no lattice and no cap</li>
+              <li>Ψ may use <i>x</i>, <i>y</i>, <i>r</i>, θ, time <i>t</i> and σ; click an example to try it</li>
             </ul>
           </section>
           <section>
