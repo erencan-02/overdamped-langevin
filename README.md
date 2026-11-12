@@ -298,6 +298,7 @@ noise it measures the strong orders on geometric Brownian motion against the exa
 npm install
 npm run dev      # local dev server
 npm test         # unit and statistical tests
+npm run e2e      # end-to-end smoke tests in the installed Chrome (Playwright)
 npm run build    # static build in dist/
 ```
 
@@ -308,21 +309,37 @@ Pushing to `main` builds, tests and deploys the site to GitHub Pages through
 
 ```
 src/
+  main.ts             builds the app part by part (src/app/) and starts the loop
+  app/                the app's parts and how they are wired (app.ts lists them, in build order):
+    core.ts             state, Ψ, particles, the process, the 2D camera
+    graphics.ts         GPU or CPU drawing of the 2D view, context loss
+    stage.ts            mouse input and the 2D ↔ 3D switch
+    actions.ts          what the toolbar, the Scene menu and the keys do
+    layout.ts           embed mode, folding the side windows, window size
+    formulas.ts         Ψ, drift and noise as formulas
+    analysis.ts         KL, observable, birth / death and the instruments
+    session.ts          capturing and restoring everything
+    recording.ts        recording runs and playing them back
+    files.ts            images, recordings, scenarios from files and drag and drop
+    scenarios.ts        the Scenario window and the tutorial
+    keyboard.ts         the shortcuts as one table (also the list in the help)
+    loop.ts             the frame loop: input, simulate, derive, analyse, draw, readout
   sim/field.ts        chunked potential grid, brush, gradient
   sim/particles.ts    particle ensemble: state, sub-stepping, trails
   sim/process.ts      the Process interface (drift, diffusion, capabilities) and the app's SDE
   sim/branching.ts    exact sampler for independent birth–death runs
-  instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
-  scenario/           scenario schema and migrations, link codec, applying and capturing set-ups
-  ui/panelKit.ts      builds every side window (cards, inputs, plots); ui/sideWindows.ts uses it
-  ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
-public/scenarios/     the course scenarios (JSON) and their index
   sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler
   sim/presets.ts      ready-made landscapes
+  instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
+  scenario/           scenario schema and migrations, link codec, applying and capturing set-ups
   render/             WebGL2 renderer and shaders
   view/               camera, grid spacing, 2D overlay (labels, cursor)
   ui/                 pointer input and DOM controls
-  main.ts             wiring and the frame loop
-tests/                vitest suites
+  ui/panelKit.ts      builds every side window (cards, inputs, plots); ui/sideWindows.ts uses it
+  ui/help.html        the help dialog (inserted at start by ui/help.ts)
+  ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
+public/scenarios/     the course scenarios (JSON) and their index
+tests/                unit and statistical tests (Vitest)
+e2e/                  end-to-end smoke tests of the whole app (Playwright)
 ```
