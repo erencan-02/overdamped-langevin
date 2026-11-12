@@ -16,6 +16,8 @@ export interface OverlayState {
   selection: GridSelection | null;
   /** Region of the equilibrium analysis (world units), drawn as a dashed box. */
   analysisBox: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** A particle to point out (e.g. the one an instrument follows), drawn as a ring. */
+  marker?: { x: number; y: number; label: string } | null;
 }
 
 /** Preview dots are drawn only if there are at most this many and they are this far apart. */
@@ -57,6 +59,7 @@ export class Overlay {
     ctx.clearRect(0, 0, this.w, this.h);
     if (s.grid) this.drawLabels(cam);
     if (s.analysisBox) this.drawAnalysisBox(cam, s.analysisBox);
+    if (s.marker) this.drawMarker(cam, s.marker);
     if (s.selection) {
       this.drawSelection(cam, s.selection);
       return;
@@ -164,6 +167,33 @@ export class Overlay {
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(58, 155, 220, 0.9)';
     ctx.fillText('KL box', clamp(x0 + 5, 4, this.w - 50), clamp(y0 + 4, 4, this.h - 14));
+    ctx.restore();
+  }
+
+  private drawMarker(cam: Camera, m: { x: number; y: number; label: string }): void {
+    const ctx = this.ctx;
+    const x = cam.toScreenX(m.x);
+    const y = cam.toScreenY(m.y);
+    if (x < -20 || y < -20 || x > this.w + 20 || y > this.h + 20) return;
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.beginPath();
+    ctx.arc(x, y, 11, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.font = '600 10px Inter, ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeText(m.label, x + 15, y);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    ctx.fillText(m.label, x + 15, y);
     ctx.restore();
   }
 

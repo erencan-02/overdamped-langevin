@@ -6,10 +6,19 @@ import { Rng } from './rng';
  * does not change the Brownian noise. With the same seed and the same actions every run is
  * identical.
  */
-export type StreamName = 'dynamics' | 'colors' | 'spawn' | 'images' | 'presets' | 'births';
+export type StreamName =
+  | 'dynamics'
+  | 'colors'
+  | 'spawn'
+  | 'images'
+  | 'presets'
+  | 'births'
+  | 'replicas'
+  | 'sweep'
+  | 'scenario';
 
 /** Each stream is derived from the seed and its name alone, so adding one changes no other. */
-const STREAMS: StreamName[] = ['dynamics', 'colors', 'spawn', 'images', 'presets', 'births'];
+const STREAMS: StreamName[] = ['dynamics', 'colors', 'spawn', 'images', 'presets', 'births', 'replicas', 'sweep', 'scenario'];
 
 /** FNV-1a hash of a stream name, combined with the seed, so every stream starts elsewhere. */
 function derive(seed: number, name: string): number {

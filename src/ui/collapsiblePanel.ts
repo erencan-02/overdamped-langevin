@@ -48,6 +48,11 @@ export function formatValue(v: number): string {
   return v.toFixed(4);
 }
 
+/** A readout value, or a dash if it is undefined. */
+export function formatOrDash(v: number): string {
+  return Number.isFinite(v) ? formatValue(v) : '—';
+}
+
 export function byId<T extends HTMLElement = HTMLElement>(id: string): T {
   const e = document.getElementById(id);
   if (!e) throw new Error(`Missing element #${id}`);

@@ -24,6 +24,8 @@ export class PotentialPanel {
   private readonly toggle = byId<HTMLInputElement>('psi-use-formula');
   private readonly norm = byId('psi-norm');
   private normKey = '';
+  /** The latest ‖∇Ψ‖ shown (NaN: none). */
+  private normValue = Number.NaN;
   private normAt = -Infinity;
   private mathLoaded = false;
   private readonly panel: CollapsiblePanel;
@@ -85,6 +87,15 @@ export class PotentialPanel {
     return this.panel.open;
   }
 
+  setOpen(open: boolean): void {
+    this.panel.setOpen(open);
+  }
+
+  /** The latest ‖∇Ψ‖ in L² of the analysis box (NaN if none was computed). */
+  get gradientNorm(): number {
+    return this.panel.open ? this.normValue : Number.NaN;
+  }
+
   /** Call every frame: refreshes ‖∇Ψ‖ while the window is open and something changed. */
   update(nowMs: number): void {
     if (!this.panel.open || nowMs - this.normAt < NORM_INTERVAL_MS) return;
@@ -94,6 +105,7 @@ export class PotentialPanel {
     this.normKey = key;
     this.normAt = nowMs;
     const value = source ? source.compute() : Number.NaN;
+    this.normValue = value;
     this.norm.textContent = Number.isFinite(value) ? formatValue(value) : '—';
   }
 

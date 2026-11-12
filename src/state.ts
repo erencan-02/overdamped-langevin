@@ -48,6 +48,10 @@ export interface AppState {
   deathRate: number;
   /** Test function f(x, y) of the observables window, in LaTeX (always a valid expression). */
   observable: string;
+  /** Test function of the ergodicity window (LaTeX, always valid). */
+  ergodicF: string;
+  /** g of the first-passage window's target set A = {g > 0} (LaTeX, always valid). */
+  passageTarget: string;
   /** Add the drift u = (u₁, u₂) to −∇Ψ (formulas in LaTeX, checked by the drift & noise window). */
   extraDrift: boolean;
   driftU1: string;
@@ -83,6 +87,8 @@ export function initialState(): AppState {
     birthRate: DEFAULTS.birthRate,
     deathRate: DEFAULTS.deathRate,
     observable: DEFAULTS.observable,
+    ergodicF: DEFAULTS.ergodicF,
+    passageTarget: DEFAULTS.passageTarget,
     extraDrift: false,
     driftU1: DEFAULTS.driftU1,
     driftU2: DEFAULTS.driftU2,

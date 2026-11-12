@@ -54,6 +54,9 @@ export const DEFAULTS = {
   potential: '\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}',
   /** Test function of the observables window (LaTeX). */
   observable: 'x^2 + y^2',
+  /** Test function of the ergodicity window, and g of the first-passage target {g > 0} (LaTeX). */
+  ergodicF: 'x^2 + y^2',
+  passageTarget: 'x',
   /** Extra drift u = (u₁, u₂) of the drift & noise window (LaTeX): a rotation. */
   driftU1: '-y',
   driftU2: 'x',

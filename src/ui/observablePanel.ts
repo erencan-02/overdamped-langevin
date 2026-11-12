@@ -66,6 +66,10 @@ export class ObservablePanel {
     this.panel.setOpen(false);
   }
 
+  setOpen(open: boolean): void {
+    this.panel.setOpen(open);
+  }
+
   /** Takes over an expression set from outside (a restored recording). */
   sync(): void {
     this.formula.setValue(this.actions.expression());
