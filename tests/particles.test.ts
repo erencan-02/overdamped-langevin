@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PotentialField } from '../src/sim/field';
 import { MAX_PARTICLES, ParticleSystem, TRAIL_DT, TRAIL_LEN } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
+import { langevin } from '../src/sim/process';
 
 function stats(v: Float64Array, n: number) {
   let m = 0;
@@ -78,7 +79,7 @@ describe('ParticleSystem', () => {
     for (let i = 0; i < N; i++) ps.add(0, 0, 0);
     const sigma = 0.8;
     const T = 1.5;
-    for (let t = 0; t < 30; t++) ps.advance(field, T / 30, sigma);
+    for (let t = 0; t < 30; t++) ps.advance(langevin(field, sigma), T / 30);
     const sx = stats(ps.x, N);
     const sy = stats(ps.y, N);
     const expected = sigma * sigma * T;
@@ -93,7 +94,7 @@ describe('ParticleSystem', () => {
     const field = harmonicField(k);
     const ps = new ParticleSystem(new Rng(2));
     ps.add(1, 0.5, 0);
-    for (let t = 0; t < 60; t++) ps.advance(field, 1 / 60, 0);
+    for (let t = 0; t < 60; t++) ps.advance(langevin(field, 0), 1 / 60);
     // x(t) = x0 · e^{-k t}
     expect(ps.x[0]).toBeCloseTo(Math.exp(-k), 5);
     expect(ps.y[0]).toBeCloseTo(0.5 * Math.exp(-k), 5);
@@ -106,7 +107,7 @@ describe('ParticleSystem', () => {
     const ps = new ParticleSystem(new Rng(3));
     const N = MAX_PARTICLES;
     for (let i = 0; i < N; i++) ps.add(0, 0, 0);
-    for (let t = 0; t < 120; t++) ps.advance(field, 1 / 40, sigma);
+    for (let t = 0; t < 120; t++) ps.advance(langevin(field, sigma), 1 / 40);
     // Stationary density ∝ exp(−2Ψ/σ²)  ⇒  Var = σ² / (2k) per coordinate.
     const expected = (sigma * sigma) / (2 * k);
     expect(Math.abs(stats(ps.x, N).variance / expected - 1)).toBeLessThan(0.1);
@@ -117,9 +118,9 @@ describe('ParticleSystem', () => {
     const field = new PotentialField({ cellSize: 0.04, cap: 5 });
     const ps = new ParticleSystem(new Rng(4));
     ps.add(0, 0, 0);
-    ps.advance(field, TRAIL_DT * 5.5, 0.5);
+    ps.advance(langevin(field, 0.5), TRAIL_DT * 5.5);
     expect(ps.trailCount[0]).toBe(5);
-    ps.advance(field, TRAIL_DT * TRAIL_LEN * 2, 0.5);
+    ps.advance(langevin(field, 0.5), TRAIL_DT * TRAIL_LEN * 2);
     expect(ps.trailCount[0]).toBe(TRAIL_LEN);
   });
 

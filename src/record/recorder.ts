@@ -16,7 +16,7 @@ const MAX_PSI_NODES = 200_000;
 /** Recording stops automatically when the raw data reaches this size. */
 export const MAX_RUN_BYTES = 400 * 1024 * 1024;
 
-const SCHEME_CODES: Record<SchemeId, number> = { heun: 0, 'euler-maruyama': 1 };
+const SCHEME_CODES: Record<SchemeId, number> = { heun: 0, 'euler-maruyama': 1, milstein: 2 };
 
 /** Simulation parameters recorded with every frame. */
 export interface RecordedParams {
@@ -32,6 +32,17 @@ export interface RecordedParams {
   birthDeath?: boolean;
   birthRate?: number;
   deathRate?: number;
+  /**
+   * Extra drift u = (u₁, u₂) and noise (s₁, s₂) as LaTeX, null for a part that is off
+   * (u = 0, s = σ); undefined/null altogether for the Langevin equation.
+   */
+  process?: RecordedProcess | null;
+}
+
+/** The non-Langevin parts of the process in a recording (see RecordedParams.process). */
+export interface RecordedProcess {
+  drift: readonly [string, string] | null;
+  noise: readonly [string, string] | null;
 }
 
 /** Format name in the metadata of recordings (files made before the app was renamed say 'potential-sde-run'). */
@@ -83,6 +94,9 @@ export class Run {
   /** Per frame: index into `potentialExpressions` of the formula Ψ, or −1 for the painted lattice. */
   readonly potentialExpr: number[] = [];
   readonly potentialExpressions: string[] = [];
+  /** Per frame: index into `processExpressions` of the drift and noise, or −1 for the Langevin equation. */
+  readonly processExpr: number[] = [];
+  readonly processExpressions: RecordedProcess[] = [];
   /** Per frame: births and deaths on (1) or off (0), and the rates λ, μ. */
   readonly birthDeath: number[] = [];
   readonly birthRate: number[] = [];
@@ -202,6 +216,7 @@ export class Run {
       playing: u1(this.playing),
       seed: { dtype: '<u4', shape: [F], data: Uint32Array.from(this.seed) },
       potential_expr: { dtype: '<i4', shape: [F], data: Int32Array.from(this.potentialExpr) },
+      process_expr: { dtype: '<i4', shape: [F], data: Int32Array.from(this.processExpr) },
       birth_death: u1(this.birthDeath),
       birth_rate: f8(this.birthRate),
       death_rate: f8(this.deathRate),
@@ -241,19 +256,20 @@ export class Run {
       name: this.name,
       started_at: this.startedAt.toISOString(),
       stopped_at: this.stoppedAt?.toISOString() ?? null,
-      equation: 'dX_t = -grad Psi(X_t) dt + sigma dW_t',
+      equation: 'dX_t = (-grad Psi + u)(t, X_t) dt + diag(s_1, s_2)(t, X_t) dW_t (Ito); u = 0 and s_1 = s_2 = sigma unless process_expr says otherwise',
       gibbs: 'pi(x) proportional to exp(-2 Psi(x) / sigma^2), restricted to the KL box',
       kl: 'KL(rho_h || pi) with rho_h = empirical measure * N(0, h^2 I), on the KL box; NaN = undefined',
       observable: 'mean of f over the particles in the KL box, 95% CI half width 1.96 s / sqrt(n), exact = integral of f d(pi) on the box',
       observable_expressions: this.obsExpressions,
       potential_expressions: this.potentialExpressions,
+      process_expressions: this.processExpressions,
       constants: {
         psi_cap: PSI_CAP,
         psi_lattice_spacing: CELL_SIZE,
         max_particles: MAX_PARTICLES,
         dt: DEFAULT_DT_MAX,
         palette: PALETTE,
-        schemes: ['heun', 'euler-maruyama'],
+        schemes: ['heun', 'euler-maruyama', 'milstein'],
       },
       start_parameters: this.startParams,
       settings: this.startSettings,
@@ -283,6 +299,8 @@ export class Run {
         death_id: 'id of the particle that died (D)',
         potential_expr:
           'index into metadata.potential_expressions (LaTeX of Psi(t, x, y)) per frame, or -1 if Psi is the painted lattice in `psi` (F)',
+        process_expr:
+          'index into metadata.process_expressions ({drift: [u_1, u_2] or null, noise: [s_1, s_2] or null}, LaTeX) per frame, or -1 for u = 0 and s = sigma (F)',
         rng_state: "state of the 'dynamics' xoshiro128** stream after each frame (F x 4)",
         clock_remainder: 'simulated time carried over to the next fixed step, per frame (F)',
         next_id: 'id the next new particle would get, per frame (F)',
@@ -382,7 +400,7 @@ export class Recorder {
     // A Ψ snapshot always comes with a frame, so that it can be tied to an exact frame index.
     const pKey = `${field.revision}|${field.epoch}`;
     const psiDue = pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS);
-    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}|${p.birthDeath}|${p.birthRate}|${p.deathRate}`;
+    const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}|${p.birthDeath}|${p.birthRate}|${p.deathRate}|${processKey(p.process)}`;
     if (force || psiDue || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
@@ -406,6 +424,15 @@ export class Recorder {
         run.potentialExpr.push(e);
       } else {
         run.potentialExpr.push(-1);
+      }
+      const proc = p.process && (p.process.drift || p.process.noise) ? p.process : null;
+      if (proc) {
+        const key = processKey(proc);
+        let e = run.processExpressions.findIndex((q) => processKey(q) === key);
+        if (e < 0) e = run.processExpressions.push({ drift: proc.drift, noise: proc.noise }) - 1;
+        run.processExpr.push(e);
+      } else {
+        run.processExpr.push(-1);
       }
       for (let i = 0; i < n; i++) if (!run.colorOf.has(ps.id[i])) run.colorOf.set(ps.id[i], ps.color[i]);
       run.sigma.push(p.sigma);
@@ -495,4 +522,10 @@ function concatU32(parts: Uint32Array[]): Uint32Array {
     o += p.length;
   }
   return out;
+}
+
+/** Identifies a recorded process ('' for the Langevin equation). */
+function processKey(p: RecordedProcess | null | undefined): string {
+  if (!p || (!p.drift && !p.noise)) return '';
+  return JSON.stringify([p.drift, p.noise]);
 }

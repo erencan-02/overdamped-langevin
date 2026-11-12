@@ -5,7 +5,7 @@ import type { SchemeId } from '../sim/schemes';
 import type { NpyValue, NumericArray } from './npzRead';
 import { RECORDING_FORMATS } from './recorder';
 
-const SCHEME_NAMES: SchemeId[] = ['heun', 'euler-maruyama'];
+const SCHEME_NAMES: SchemeId[] = ['heun', 'euler-maruyama', 'milstein'];
 
 /** A recording that cannot be used, with a message suitable for the user. */
 export class RecordingError extends Error {}
@@ -31,6 +31,9 @@ export class RecordingTimeline {
   /** Formula of Ψ per frame (index into `potentialExpressions`, −1 = painted), if recorded. */
   private readonly potentialExpr: NumericArray | null;
   private readonly potentialExpressions: string[];
+  /** Drift and noise per frame (index into `processExpressions`, −1 = Langevin), if recorded. */
+  private readonly processExpr: NumericArray | null;
+  private readonly processExpressions: { drift: [string, string] | null; noise: [string, string] | null }[];
   private readonly birthDeath: { on: NumericArray; birth: NumericArray; death: NumericArray } | null;
   private readonly rngState: NumericArray | null;
   private readonly clockRemainder: NumericArray | null;
@@ -97,6 +100,9 @@ export class RecordingTimeline {
     this.birthDeath = on && birth && death ? { on, birth, death } : null;
     const exprs = meta.potential_expressions;
     this.potentialExpressions = Array.isArray(exprs) ? exprs.filter((e): e is string => typeof e === 'string') : [];
+    this.processExpr = num('process_expr');
+    const procs = meta.process_expressions;
+    this.processExpressions = Array.isArray(procs) ? procs.map(readProcess) : [];
     this.perFrame = {
       sigma: num('sigma'),
       speed: num('speed'),
@@ -228,6 +234,13 @@ export class RecordingTimeline {
     const tex = e >= 0 ? this.potentialExpressions[e] : undefined;
     physics.potentialMode = tex ? 'formula' : 'painted';
     if (tex) physics.potentialTex = tex;
+    // Drift and noise (the Langevin equation in recordings made before they existed).
+    const q = this.processExpr ? this.processExpr[k] : -1;
+    const proc = q >= 0 ? this.processExpressions[q] : undefined;
+    physics.extraDrift = !!proc?.drift;
+    physics.noiseFormula = !!proc?.noise;
+    if (proc?.drift) [physics.driftU1, physics.driftU2] = proc.drift;
+    if (proc?.noise) [physics.noiseS1, physics.noiseS2] = proc.noise;
     // Births and deaths (off in recordings made before they existed).
     const bd = this.birthDeath;
     physics.birthDeath = bd ? bd.on[k] === 1 : false;
@@ -261,4 +274,12 @@ export class RecordingTimeline {
     snap.particles = particles;
     return snap;
   }
+}
+
+/** A recorded process entry, with anything malformed dropped (that part counts as off). */
+function readProcess(raw: unknown): { drift: [string, string] | null; noise: [string, string] | null } {
+  const pair = (v: unknown): [string, string] | null =>
+    Array.isArray(v) && v.length === 2 && typeof v[0] === 'string' && typeof v[1] === 'string' ? [v[0], v[1]] : null;
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return { drift: pair(o.drift), noise: pair(o.noise) };
 }

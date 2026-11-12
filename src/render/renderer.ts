@@ -2,7 +2,7 @@ import { PALETTE_RGB } from '../config';
 import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
 import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
 import type { Camera } from '../view/camera';
-import type { DriftField } from '../sim/schemes';
+import type { DriftField } from '../sim/process';
 import {
   FORMULA_CHECK,
   FORMULA_CHECK_VS,

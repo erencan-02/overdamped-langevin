@@ -8,7 +8,9 @@ import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES, ParticleSystem } fr
 import { UndoHistory } from './sim/history';
 import { RandomStreams } from './sim/random';
 import { applyPreset, type PresetName } from './sim/presets';
-import { SCHEMES, type SchemeId } from './sim/schemes';
+import { SCHEME_ORDER, SCHEMES, type SchemeId } from './sim/schemes';
+import { type ProcessCapabilities, Sde } from './sim/process';
+import { ProcessPanel } from './ui/processPanel';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { CollapsiblePanel } from './ui/collapsiblePanel';
@@ -105,6 +107,19 @@ function main(): void {
   const input = new InputController(stage, camera, field, particles, state, random, history);
   // Ψ for the simulation, the analysis and the pictures: the painted lattice or a formula.
   const potential = new Potential(field);
+  // The process the particles follow: dX = (−∇Ψ + u) dt + diag(s₁, s₂) dW (the drift & noise
+  // window sets u and s; off, it is the Langevin equation). What the analysis may assume about it
+  // (e.g. that the Gibbs measure is invariant) follows its capabilities.
+  const sde = new Sde();
+  let capabilities: ProcessCapabilities = sde.capabilities;
+  /** The process at the current Ψ and σ, ready for the integrator. */
+  const processNow = (): Sde => {
+    sde.potential = potential.drift;
+    sde.sigma = state.sigma;
+    return sde;
+  };
+  /** The simulation must wait: a formula of Ψ, u or s is not compiled yet. */
+  const waiting = (): boolean => potentialPanel.pending || processPanel.pending;
   input.paintBlocked = () => {
     if (state.potentialMode !== 'formula') return false;
     controls.showToast('Ψ is given by a formula. Turn the formula off in the Potential window to paint.', {
@@ -287,6 +302,10 @@ function main(): void {
       seed: state.seed,
       playing: state.playing,
       potentialTex: state.potentialMode === 'formula' ? state.potentialTex : null,
+      process: {
+        drift: sde.extraDrift ? [state.driftU1, state.driftU2] : null,
+        noise: sde.noise ? [state.noiseS1, state.noiseS2] : null,
+      },
       birthDeath: state.birthDeath,
       birthRate: state.birthRate,
       deathRate: state.deathRate,
@@ -358,6 +377,65 @@ function main(): void {
     return renderer.setFormula({ glsl: f.glsl, exact: (xs, ys, n, t, sigma, out) => f.value(xs, ys, n, t, sigma, out) });
   };
 
+  // Drift and noise: u and s as formulas (the Langevin equation while both are off).
+  const processPanel = new ProcessPanel({
+    settings: () => state,
+    set: (change) => session.apply({ physics: change }),
+    apply: (drift, noise) => {
+      sde.extraDrift = drift;
+      sde.noise = noise;
+      capabilities = sde.capabilities;
+      // The equilibrium tools need the Gibbs measure to be the invariant measure.
+      monitor.gibbs = capabilities.gibbs;
+      observables.gibbs = capabilities.gibbs;
+      klPanel.draw();
+      observablePanel.draw();
+      showEquation();
+      arrowEpoch++;
+    },
+    capabilities: () => capabilities,
+  });
+  /** The equation in the title card follows the process. */
+  const brandEq = document.querySelector<HTMLElement>('.brand-eq');
+  const showEquation = () => {
+    if (!brandEq) return;
+    const drift = sde.extraDrift ? '(−∇Ψ + u)(t, X<sub>t</sub>)' : '−∇Ψ(t, X<sub>t</sub>)';
+    const noise = sde.noise ? 's(t, X<sub>t</sub>)' : 'σ';
+    brandEq.innerHTML = `dX<sub>t</sub> = ${drift} dt + ${noise} dW<sub>t</sub>`; // fixed markup only
+  };
+  /**
+   * Force arrows show the whole drift b = −∇Ψ + u when there is an extra drift (otherwise the
+   * renderers draw −∇Ψ of the potential). The counters tell them when to rebuild.
+   */
+  let arrowEpoch = 0;
+  let arrowRevision = 0;
+  let arrowKey = '';
+  let arrowEpochKey = '';
+  const driftArrows = {
+    gradient(x: number, y: number, out: Float64Array) {
+      const xs = Float64Array.of(x);
+      const ys = Float64Array.of(y);
+      const bx = new Float64Array(1);
+      const by = new Float64Array(1);
+      processNow().drift(xs, ys, 1, particles.time, bx, by);
+      out[0] = -bx[0];
+      out[1] = -by[0];
+    },
+    gradientBatch(xs: Float64Array, ys: Float64Array, n: number, _t: number, gx: Float64Array, gy: Float64Array) {
+      processNow().drift(xs, ys, n, particles.time, gx, gy);
+      for (let i = 0; i < n; i++) {
+        gx[i] = -gx[i];
+        gy[i] = -gy[i];
+      }
+    },
+    get revision() {
+      return arrowRevision;
+    },
+    get epoch() {
+      return arrowEpoch;
+    },
+  };
+
   // Births and deaths: exponential clocks per particle, run after every integrator step. They
   // draw from their own random stream, and recordings get every event (the lineage).
   const birthDeath = new BirthDeath(random.get('births'), {
@@ -376,6 +454,7 @@ function main(): void {
     controls.sync();
     observablePanel.sync(); // e.g. the test function of a restored recording
     potentialPanel.sync(); // e.g. the potential of a restored recording
+    processPanel.sync(); // e.g. the drift and noise of a restored recording
   };
   const session = new Session()
     .register(new PhysicsSettings(state, syncUi, particles, random))
@@ -520,8 +599,8 @@ function main(): void {
         state.playing = false; // stepping pauses, as in a video player
         controls.sync();
       }
-      if (potentialPanel.pending) return; // the formula is not ready: never step with a wrong Ψ
-      particles.advance(potential.drift, DEFAULT_DT_MAX, state.sigma);
+      if (waiting()) return; // a formula is not ready: never step with a wrong process
+      particles.advance(processNow(), DEFAULT_DT_MAX);
     },
     startHold: () => {
       if (playback.active) playback.play(performance.now());
@@ -601,7 +680,7 @@ function main(): void {
         break;
       case 's':
       case 'S':
-        actions.setScheme(state.scheme === 'heun' ? 'euler-maruyama' : 'heun');
+        actions.setScheme(SCHEME_ORDER[(SCHEME_ORDER.indexOf(state.scheme) + 1) % SCHEME_ORDER.length]);
         break;
       case 'i':
       case 'I':
@@ -716,11 +795,11 @@ function main(): void {
     // Playback first: it notices if the user just altered the simulation and leaves.
     playback.update(now);
     // A time-dependent Ψ runs on even without particles; a formula that is still compiling waits.
-    if (state.playing && (particles.count > 0 || potential.timeDependent) && !potentialPanel.pending) {
+    if (state.playing && (particles.count > 0 || potential.timeDependent || sde.coefficientsDependOnTime) && !waiting()) {
       // Adapt the per-frame work budget to the measured cost of one drift evaluation so the
       // simulation never takes more than ~SIM_MS_PER_FRAME, whatever the device or scheme.
       const t0 = performance.now();
-      particles.advance(potential.drift, dt * state.speed, state.sigma, DEFAULT_DT_MAX, workBudget);
+      particles.advance(processNow(), dt * state.speed, DEFAULT_DT_MAX, workBudget);
       const elapsed = performance.now() - t0;
       const work = particles.lastWork;
       if (work > 1000 && elapsed > 0) {
@@ -734,6 +813,20 @@ function main(): void {
 
     // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
     potential.setTime(particles.time, state.sigma);
+    if (sde.extraDrift && state.forceField) {
+      // The drift arrows change with Ψ, and with time or σ if u depends on them. A replaced Ψ
+      // rebuilds them at once (epoch); edits and time only at the renderers' refresh rate.
+      const epochKey = `${potential.epoch}`;
+      if (epochKey !== arrowEpochKey) {
+        arrowEpochKey = epochKey;
+        arrowEpoch++;
+      }
+      const key = `${potential.revision}|${sde.coefficientsDependOnTime ? `${particles.time}|${state.sigma}` : ''}`;
+      if (key !== arrowKey) {
+        arrowKey = key;
+        arrowRevision++;
+      }
+    }
     // Only a formula drawn from the CPU needs the display lattice (redrawn when the view moves).
     if (potential.analytic && !formulaOnGpu) potential.updateDisplay(camera.bounds(), now);
 
@@ -771,7 +864,11 @@ function main(): void {
         trails: state.trails,
         contours: state.contours,
         forceField: state.forceField,
-        arrows: potential.analytic ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch } : undefined,
+        arrows: sde.extraDrift
+          ? driftArrows
+          : potential.analytic
+            ? { ...potential.formulaDrift, revision: potential.revision, epoch: potential.epoch }
+            : undefined,
         formula: potential.analytic && formulaOnGpu && onGpu ? { t: particles.time, sigma: state.sigma } : undefined,
         density: state.showDensity ? monitor.density : null,
       });
@@ -828,6 +925,7 @@ function main(): void {
       monitor,
       observables,
       potential,
+      sde,
       birthDeath,
       viewSwitch,
       input,

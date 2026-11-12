@@ -3,6 +3,7 @@ import { PotentialField } from '../src/sim/field';
 import { ParticleSystem } from '../src/sim/particles';
 import { RandomStreams } from '../src/sim/random';
 import { Rng } from '../src/sim/rng';
+import { langevin } from '../src/sim/process';
 
 function makeRun(seed: number) {
   const field = new PotentialField({ cellSize: 0.04, cap: 5 });
@@ -18,9 +19,9 @@ describe('reproducibility', () => {
     const a = makeRun(0);
     const b = makeRun(0);
     // Same total time (1 s), very different "frame rates".
-    for (let k = 0; k < 60; k++) a.ps.advance(a.field, 1 / 60, 0.7);
+    for (let k = 0; k < 60; k++) a.ps.advance(langevin(a.field, 0.7), 1 / 60);
     const chunks = [0.013, 0.1, 0.0005, 0.25, 0.3365, 0.3];
-    for (const t of chunks) b.ps.advance(b.field, t, 0.7);
+    for (const t of chunks) b.ps.advance(langevin(b.field, 0.7), t);
     expect(a.ps.time).toBeCloseTo(b.ps.time, 12);
     for (let i = 0; i < a.ps.count; i++) {
       expect(a.ps.x[i]).toBe(b.ps.x[i]);
@@ -32,7 +33,7 @@ describe('reproducibility', () => {
     const a = makeRun(42);
     const b = makeRun(42);
     const c = makeRun(43);
-    for (const r of [a, b, c]) r.ps.advance(r.field, 0.5, 0.7);
+    for (const r of [a, b, c]) r.ps.advance(langevin(r.field, 0.7), 0.5);
     expect(Array.from(a.ps.x.subarray(0, 50))).toEqual(Array.from(b.ps.x.subarray(0, 50)));
     expect(a.ps.x[0]).not.toBe(c.ps.x[0]);
   });

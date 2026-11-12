@@ -7,6 +7,7 @@ import { PotentialField } from '../src/sim/field';
 import { UndoHistory } from '../src/sim/history';
 import { MAX_PARTICLES, ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
+import { langevin } from '../src/sim/process';
 
 const flat = { gradient: (_x: number, _y: number, out: Float64Array) => out.fill(0) };
 
@@ -26,7 +27,7 @@ function system(n: number, seed = 1, birthRate = 0, deathRate = 0) {
 describe('birth–death process', () => {
   it('pure death: the surviving fraction is exp(−μt)', () => {
     const { ps, bd } = system(1600, 3, 0, 0.7);
-    ps.advance(flat, 1, 0);
+    ps.advance(langevin(flat, 0), 1);
     const expected = 1600 * Math.exp(-0.7);
     const sd = Math.sqrt(1600 * Math.exp(-0.7) * (1 - Math.exp(-0.7)));
     expect(Math.abs(ps.count - expected)).toBeLessThan(4 * sd);
@@ -42,7 +43,7 @@ describe('birth–death process', () => {
       const { ps, events } = system(20, 10 + r, 0.8, 0);
       const positions = new Map<number, [number, number]>();
       for (let i = 0; i < ps.count; i++) positions.set(ps.id[i], [ps.x[i], ps.y[i]]);
-      ps.advance(flat, 1, 0); // σ = 0: nobody moves, so a child sits exactly where its parent is
+      ps.advance(langevin(flat, 0), 1); // σ = 0: nobody moves, so a child sits exactly where its parent is
       total += ps.count;
       for (const e of events) {
         const [, , parent, child] = e.split(' ');
@@ -62,8 +63,8 @@ describe('birth–death process', () => {
   it('children keep their parent colour; the same seed gives the same history', () => {
     const a = system(50, 7, 1.5, 1);
     const b = system(50, 7, 1.5, 1);
-    a.ps.advance(flat, 2, 0.5);
-    b.ps.advance(flat, 2, 0.5);
+    a.ps.advance(langevin(flat, 0.5), 2);
+    b.ps.advance(langevin(flat, 0.5), 2);
     expect(a.events.length).toBeGreaterThan(20);
     expect(b.events).toEqual(a.events);
     expect(Array.from(b.ps.x.subarray(0, b.ps.count))).toEqual(Array.from(a.ps.x.subarray(0, a.ps.count)));
@@ -79,13 +80,13 @@ describe('birth–death process', () => {
   it('does nothing while off or with zero rates, and respects the particle limit', () => {
     const off = system(100, 2, 5, 5);
     off.bd.configure(false, 5, 5);
-    off.ps.advance(flat, 1, 0);
+    off.ps.advance(langevin(flat, 0), 1);
     expect(off.ps.count).toBe(100);
     const zero = system(100, 2, 0, 0);
-    zero.ps.advance(flat, 1, 0);
+    zero.ps.advance(langevin(flat, 0), 1);
     expect(zero.ps.count).toBe(100);
     const full = system(MAX_PARTICLES - 5, 4, 50, 0);
-    full.ps.advance(flat, 0.2, 0);
+    full.ps.advance(langevin(flat, 0), 0.2);
     expect(full.ps.count).toBe(MAX_PARTICLES);
     expect(full.bd.blocked).toBeGreaterThan(0);
   });
@@ -95,7 +96,7 @@ describe('birth–death process', () => {
     const { ps } = system(200, 5, 2, 2);
     const history = new UndoHistory(field, ps);
     history.begin('Brush stroke'); // e.g. painting while the simulation runs
-    ps.advance(flat, 0.5, 0.3);
+    ps.advance(langevin(flat, 0.3), 0.5);
     field.applyBrush(0, 0, 1, 0.5);
     history.end();
     const count = ps.count;
@@ -129,7 +130,7 @@ describe('recordings with births and deaths', () => {
     recorded.configure(true, 1, 1);
     ps.events = recorded;
     rec.start(0, { x0: -1, y0: -1, x1: 1, y1: 1 });
-    ps.advance(flat, 0.5, 0.5);
+    ps.advance(langevin(flat, 0.5), 0.5);
     rec.tick(100);
     const run = rec.stop(200)!;
     const arrays = await readNpz(await run.toNpz());

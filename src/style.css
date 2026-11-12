@@ -563,7 +563,7 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 .mini-seg {
   display: grid;
-  grid-template-columns: 1fr 1.45fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding: 3px;
   border-radius: 9px;
@@ -1682,4 +1682,17 @@ body.in-playback .hint {
     flex: none;
     padding: 0 7px;
   }
+}
+
+/* ------------------------------------------------------------------ drift & noise */
+
+.process-eq {
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  padding: 2px 0 6px;
+}
+#process-body .switch-row {
+  margin-top: 4px;
 }

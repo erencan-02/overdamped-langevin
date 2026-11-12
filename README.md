@@ -48,7 +48,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Image → Ψ | **Drop an image on the left half** of the window, or Scene menu → *Image → Ψ…* (<kbd>I</kbd>) |
 | Image → particles | **Drop an image on the right half**, or Scene menu → *Image → particles…* (<kbd>Shift</kbd>+<kbd>I</kbd>) |
 | Live camera → Ψ | Camera button in the toolbar (<kbd>V</kbd>); click again to stop and keep the last frame |
-| Numerical scheme | Heun / Euler–Maruyama toggle in the panel, or <kbd>S</kbd> |
+| Numerical scheme | Heun / Euler–Maruyama / Milstein in the panel, or <kbd>S</kbd> to cycle |
+| Drift & noise | **Drift & noise** window: add a drift $u(t,x,y)$ (e.g. a rotation) and/or state-dependent noise $s_1, s_2$ typed in LaTeX |
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
 | Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
@@ -163,17 +164,33 @@ changed), the KL time series with its floor, h, particle count and box, and the 
 time series (mean, CI half width, exact value, particle count and the LaTeX of f). Recording stops by
 itself at 400 MB of raw data; runs live in the browser tab until downloaded or deleted.
 
-**Numerical schemes.** Two interchangeable schemes are implemented in `src/sim/schemes.ts`
-behind a common interface. Switch between them with the toggle in the panel or <kbd>S</kbd>,
-even while the simulation is running:
+**The process.** The schemes see the SDE only through a small interface (`Process` in
+`src/sim/process.ts`): a batched drift $b(t,x)$, diagonal diffusion coefficients $s_1, s_2$ (and
+$\partial_x s_1$, $\partial_y s_2$ for Milstein), and *capability flags*. The app's process is
 
-| | Update | Force evaluations / step |
+```math
+dX_t = \big(-\nabla\Psi + u\big)(t, X_t)\,dt + \operatorname{diag}(s_1, s_2)(t, X_t)\,dW_t \qquad\text{(Itô)},
+```
+
+with $u = 0$ and $s_1 = s_2 = \sigma$ unless the **Drift & noise** window sets them (formulas in $t, x, y, \sigma$,
+differentiated symbolically). The flags say what is known: only for the Langevin case ($u = 0$, $s = \sigma$)
+is the Gibbs measure $e^{-2\Psi/\sigma^2}$ invariant, so *KL to equilibrium* and the exact $\int f\,d\pi$ switch
+off otherwise; they also tell whether the noise is additive or diagonal (where Milstein has strong order 1).
+
+**Numerical schemes.** Three interchangeable schemes are implemented in `src/sim/schemes.ts`.
+Switch between them in the panel or with <kbd>S</kbd>, even while the simulation is running:
+
+| | Update | Drift evaluations / step |
 | --- | --- | --- |
-| **Euler–Maruyama** | $X_{n+1} = X_n - \nabla\Psi(X_n)\thinspace \Delta t + \sigma\thinspace \Delta W$ | 1 |
-| **Stochastic Heun** (default) | $\tilde X = X_n - \nabla\Psi(X_n)\thinspace \Delta t + \sigma\thinspace \Delta W$, then $X_{n+1} = X_n - \tfrac12\big[\nabla\Psi(X_n) + \nabla\Psi(\tilde X)\big]\Delta t + \sigma\thinspace \Delta W$ | 2 |
+| **Euler–Maruyama** | $X_{n+1} = X_n + b(X_n)\thinspace \Delta t + s(X_n)\thinspace \Delta W$ | 1 |
+| **Stochastic Heun** (default) | $\tilde X = X_n + b(X_n)\thinspace \Delta t + s(X_n)\thinspace \Delta W$, then $X_{n+1} = X_n + \tfrac12\big[b(X_n) + b(\tilde X)\big]\Delta t + s(X_n)\thinspace \Delta W$ | 2 |
+| **Milstein** | $X^k_{n+1} = X^k_n + b^k\thinspace \Delta t + s_k\thinspace \Delta W^k + \tfrac12 s_k\thinspace\partial_k s_k\big((\Delta W^k)^2 - \Delta t\big)$ | 1 |
 
-with $\Delta W \sim \mathcal N(0, \Delta t\thinspace  I)$, the same increment in both Heun stages. Because the noise
-is additive (σ is constant), **both schemes have strong order 1**. The difference is in the drift:
+with $\Delta W \sim \mathcal N(0, \Delta t\thinspace  I)$, the same increment in both Heun stages. Heun evaluates the
+noise at the start of the step only, so it converges to the Itô solution also for multiplicative noise.
+For multiplicative noise Euler–Maruyama and Heun have strong order ½ and Milstein strong order 1 (for
+diagonal noise). When the noise is additive (σ is constant), Milstein is Euler–Maruyama and
+**all schemes have strong order 1**. The difference is in the drift:
 Euler–Maruyama is first order there, while Heun is second order (and is reported to have weak
 order 2 for additive noise). Heun is therefore much more accurate where the force dominates the
 noise, at twice the cost per step. Sub-steps are at most 2 ms of simulated time. If thousands of
@@ -193,7 +210,9 @@ sampler's moments and tails, free Brownian motion ($\mathrm{Var}\thinspace X_t=\
 deterministic gradient flow, and relaxation to the Gibbs distribution of an Ornstein–Uhlenbeck
 process ($\mathrm{Var}=\sigma^2/2k$). For the schemes, it measures the convergence order in the
 drift (halving Δt divides the error by 2 for Euler–Maruyama and by 4 for Heun) and checks that each
-scheme reproduces its own exact discrete stationary variance for the OU process.
+scheme reproduces its own exact discrete stationary variance for the OU process. For multiplicative
+noise it measures the strong orders on geometric Brownian motion against the exact solution
+(Milstein 1, Euler–Maruyama ½) and checks that Heun converges to the Itô, not the Stratonovich, solution.
 
 ## Development
 
@@ -213,7 +232,8 @@ Pushing to `main` builds, tests and deploys the site to GitHub Pages through
 src/
   sim/field.ts        chunked potential grid, brush, gradient
   sim/particles.ts    particle ensemble: state, sub-stepping, trails
-  sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun)
+  sim/process.ts      the Process interface (drift, diffusion, capabilities) and the app's SDE
+  sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler
   sim/presets.ts      ready-made landscapes
   render/             WebGL2 renderer and shaders

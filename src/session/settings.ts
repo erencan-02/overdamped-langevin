@@ -62,7 +62,13 @@ type PhysicsKey =
   | 'potentialTex'
   | 'birthDeath'
   | 'birthRate'
-  | 'deathRate';
+  | 'deathRate'
+  | 'extraDrift'
+  | 'driftU1'
+  | 'driftU2'
+  | 'noiseFormula'
+  | 'noiseS1'
+  | 'noiseS2';
 
 /** Parameters of the dynamics. Applied first: the seed resets the random streams. */
 export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
@@ -79,6 +85,13 @@ export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
     new BooleanField('birthDeath'),
     new NumberField('birthRate', ...RANGES.birthRate),
     new NumberField('deathRate', ...RANGES.deathRate),
+    // Drift & noise: checked by their window when applied (like the potential formula).
+    new BooleanField('extraDrift'),
+    new StringField('driftU1', 500),
+    new StringField('driftU2', 500),
+    new BooleanField('noiseFormula'),
+    new StringField('noiseS1', 500),
+    new StringField('noiseS2', 500),
   ] as Field<AppState[PhysicsKey]>[];
 
   constructor(

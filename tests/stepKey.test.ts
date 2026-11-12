@@ -3,6 +3,7 @@ import { HOLD_DELAY_MS, StepKey } from '../src/ui/stepKey';
 import { PotentialField } from '../src/sim/field';
 import { DEFAULT_DT_MAX, ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
+import { langevin } from '../src/sim/process';
 
 describe('StepKey (→)', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -51,8 +52,8 @@ describe('a single step', () => {
     const a = new ParticleSystem(new Rng(4));
     const b = new ParticleSystem(new Rng(4));
     for (const ps of [a, b]) for (let i = 0; i < 5; i++) ps.add(i * 0.1, 0, 0);
-    a.advance(field, DEFAULT_DT_MAX, 0.7);
-    b.step(field, DEFAULT_DT_MAX, 0.7);
+    a.advance(langevin(field, 0.7), DEFAULT_DT_MAX);
+    b.step(langevin(field, 0.7), DEFAULT_DT_MAX);
     expect(a.time).toBeCloseTo(DEFAULT_DT_MAX, 15);
     expect(a.lastSubsteps).toBe(1);
     for (let i = 0; i < 5; i++) expect(a.x[i]).toBe(b.x[i]);

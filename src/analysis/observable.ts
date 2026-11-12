@@ -55,6 +55,8 @@ export class ObservableMonitor {
   enabled = false;
   /** Keep estimating while the window is closed (recording). */
   keepRunning = false;
+  /** The Gibbs measure is the invariant measure of the process (else there is no exact value). */
+  gibbs = true;
   readonly series = new TimeSeries(['mean', 'lo', 'hi', 'exact'] as const);
   latest: ObservableSample | null = null;
 
@@ -122,7 +124,7 @@ export class ObservableMonitor {
     const field = this.field;
     const ps = this.particles;
     const gridKey = `${grid.x0},${grid.y0},${grid.cell},${grid.nx},${grid.ny}`;
-    const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${gridKey}|${this.fnVersion}`;
+    const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${gridKey}|${this.fnVersion}|${this.gibbs}`;
     // A stale exact value is retried even when nothing else changed.
     if (inputs === this.lastInputs && !this.exactStale) return false;
     // A different box (not just a re-snapped grid after changing h) starts a new curve.
@@ -172,7 +174,8 @@ export class ObservableMonitor {
     }
     const m = n > 0 ? mean : NaN;
     const ci = n > 1 ? (Z95 * Math.sqrt(m2 / (n - 1))) / Math.sqrt(n) : NaN;
-    const exact = this.ensureExact(grid, gridKey, f, nowMs);
+    if (!this.gibbs) this.exactStale = false;
+    const exact = this.gibbs ? this.ensureExact(grid, gridKey, f, nowMs) : NaN;
 
     this.latest = { mean: m, ci, exact, exactStale: this.exactStale, inside: n, total: ps.count, undefinedAt };
     this.series.push(ps.time, { mean: m, lo: m - ci, hi: m + ci, exact });

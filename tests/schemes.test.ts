@@ -3,6 +3,7 @@ import { PotentialField } from '../src/sim/field';
 import { MAX_PARTICLES, ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
 import { type DriftField, SCHEMES, type SchemeId } from '../src/sim/schemes';
+import { langevin } from '../src/sim/process';
 
 /** Analytic harmonic potential Ψ = k/2·|x|², so ∇Ψ = k·x exactly (no grid error). */
 const harmonic = (k: number): DriftField => ({
@@ -46,7 +47,7 @@ describe('numerical schemes', () => {
     const rng = new Rng(1);
     const errorAt = (n: number) => {
       const e = ensemble(1, 1, -0.5);
-      for (let s = 0; s < n; s++) SCHEMES[id].step(e, field, 1 / n, 0, rng);
+      for (let s = 0; s < n; s++) SCHEMES[id].step(e, langevin(field, 0), 1 / n, rng);
       return Math.abs(e.x[0] - Math.exp(-k));
     };
     const ratio = errorAt(50) / errorAt(100);
@@ -71,7 +72,7 @@ describe('numerical schemes', () => {
 
     const e = ensemble(N);
     const rng = new Rng(11);
-    for (let s = 0; s < 150; s++) SCHEMES[id].step(e, harmonic(k), dt, sigma, rng);
+    for (let s = 0; s < 150; s++) SCHEMES[id].step(e, langevin(harmonic(k), sigma), dt, rng);
     const v = variance(e.x);
     expect(Math.abs(v / expected - 1)).toBeLessThan(0.04);
   });
@@ -83,7 +84,7 @@ describe('numerical schemes', () => {
     for (const id of ids) {
       const e = ensemble(20_000);
       const rng = new Rng(5);
-      for (let s = 0; s < 150; s++) SCHEMES[id].step(e, harmonic(k), 0.1, 1, rng);
+      for (let s = 0; s < 150; s++) SCHEMES[id].step(e, langevin(harmonic(k), 1), 0.1, rng);
       vs[id] = Math.abs(variance(e.x) / exact - 1);
     }
     expect(vs.heun).toBeLessThan(0.04);
@@ -95,7 +96,7 @@ describe('numerical schemes', () => {
     const ps = new ParticleSystem(new Rng(9), SCHEMES[id]);
     for (let i = 0; i < MAX_PARTICLES; i++) ps.add(0, 0, 0);
     const sigma = 0.7;
-    for (let t = 0; t < 20; t++) ps.advance(field, 0.05, sigma);
+    for (let t = 0; t < 20; t++) ps.advance(langevin(field, sigma), 0.05);
     const v = variance(ps.x.subarray(0, ps.count));
     expect(Math.abs(v / (sigma * sigma * 1) - 1)).toBeLessThan(0.1);
   });
@@ -104,9 +105,9 @@ describe('numerical schemes', () => {
     const k = 1;
     const ps = new ParticleSystem(new Rng(3));
     ps.add(1, 0, 0);
-    ps.advance(harmonic(k), 0.5, 0);
+    ps.advance(langevin(harmonic(k), 0), 0.5);
     ps.scheme = SCHEMES['euler-maruyama'];
-    ps.advance(harmonic(k), 0.5, 0);
+    ps.advance(langevin(harmonic(k), 0), 0.5);
     expect(ps.x[0]).toBeCloseTo(Math.exp(-1), 2);
     expect(ps.time).toBeCloseTo(1, 12);
   });
@@ -116,7 +117,7 @@ describe('numerical schemes', () => {
     for (const id of ids) {
       const ps = new ParticleSystem(new Rng(1), SCHEMES[id]);
       for (let i = 0; i < 1000; i++) ps.add(0, 0, 0);
-      ps.advance(field, 1, 0.5, 1 / 500, 20_000);
+      ps.advance(langevin(field, 0.5), 1, 1 / 500, 20_000);
       expect(ps.lastWork).toBeLessThanOrEqual(20_000);
       // Euler–Maruyama affords twice as many sub-steps for the same budget.
       expect(ps.lastSubsteps).toBe(id === 'heun' ? 10 : 20);

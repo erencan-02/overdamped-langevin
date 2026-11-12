@@ -11,6 +11,7 @@ import { PotentialField } from '../src/sim/field';
 import { ParticleSystem } from '../src/sim/particles';
 import { RandomStreams } from '../src/sim/random';
 import { initialState } from '../src/state';
+import { langevin } from '../src/sim/process';
 
 function app(seed = 0) {
   const state = initialState();
@@ -72,7 +73,7 @@ describe('recording → file → playback', () => {
     let now = 0;
     rec.start(now, { x0: -2, y0: -2, x1: 2, y1: 2 });
     for (let k = 0; k < 8; k++) {
-      a.ps.advance(a.field, 1 / 30, a.state.sigma);
+      a.ps.advance(langevin(a.field, a.state.sigma), 1 / 30);
       now += 60;
       rec.tick(now);
     }
@@ -101,8 +102,8 @@ describe('recording → file → playback', () => {
     }
 
     // Continue both: the played-back state is the exact state of the original run.
-    a.ps.advance(a.field, 0.5, 0.8);
-    b.ps.advance(b.field, 0.5, 0.8);
+    a.ps.advance(langevin(a.field, 0.8), 0.5);
+    b.ps.advance(langevin(b.field, 0.8), 0.5);
     for (let i = 0; i < 29; i++) {
       expect(b.ps.x[i]).toBe(a.ps.x[i]);
       expect(b.ps.y[i]).toBe(a.ps.y[i]);
@@ -129,7 +130,7 @@ describe('Playback controller', () => {
     let now = 0;
     rec.start(now, { x0: -1, y0: -1, x1: 1, y1: 1 });
     for (let k = 0; k < 10; k++) {
-      a.ps.advance(a.field, 0.05, 0.5);
+      a.ps.advance(langevin(a.field, 0.5), 0.05);
       now += 100; // 10 frames per second of wall-clock time
       rec.tick(now);
     }
@@ -181,12 +182,12 @@ describe('Ψ snapshots in playback', () => {
     const rec = new Recorder({ field: a.field, particles: a.ps, params: () => ({ ...a.state, playing: true }) });
     rec.start(0, { x0: -2, y0: -2, x1: 2, y1: 2 });
     for (let k = 1; k <= 5; k++) {
-      a.ps.advance(a.field, 0.05, 0.5);
+      a.ps.advance(langevin(a.field, 0.5), 0.05);
       rec.tick(k * 100);
     }
     a.field.applyBrush(1, 1, 2, 0.4); // Ψ changes after frame 5
     rec.tick(900);
-    a.ps.advance(a.field, 0.05, 0.5);
+    a.ps.advance(langevin(a.field, 0.5), 0.05);
     rec.tick(1000);
     const run = rec.stop(50)!; // a stop time from another clock: not monotonic
     const t = new RecordingTimeline(await readNpz(await run.toNpz()));
