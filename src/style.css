@@ -1696,3 +1696,23 @@ body.in-playback .hint {
 #process-body .switch-row {
   margin-top: 4px;
 }
+
+/* ------------------------------------------------------------------ instruments */
+
+.inline-number .field-head {
+  margin-bottom: 4px;
+}
+.inline-number input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 7px;
+  background: var(--surface-solid);
+  color: var(--ink);
+  font: 500 12px var(--mono);
+}
+.inline-number input:focus {
+  outline: 2px solid rgba(58, 155, 220, 0.45);
+  outline-offset: 0;
+}

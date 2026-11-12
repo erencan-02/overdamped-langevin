@@ -1,5 +1,8 @@
 import { TimeSeries } from '../analysis/timeSeries';
+import type { FrameContext, Instrument } from '../instruments/instrument';
 import type { BirthDeath } from '../sim/birthDeath';
+import { BranchingReplicas } from '../sim/branching';
+import type { Rng } from '../sim/rng';
 import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
 import { byId, CollapsiblePanel, formatValue } from './collapsiblePanel';
 import { FormulaInput } from './formulaInput';
@@ -11,14 +14,17 @@ const INTERVAL_MS = 100;
 const MAX_RATE = 100;
 
 /**
- * The birth/death window: a switch, the birth rate λ and the death rate μ (validated inputs),
- * and the number of particles over simulated time against its expectation N₀·e^{(λ−μ)(t−t₀)}.
- * The expectation restarts from the actual count whenever the count changes for another reason
- * (particles added or removed by hand) or the rates change.
+ * The birth/death window (an instrument): a switch, the birth rate λ and the death rate μ
+ * (validated inputs), and the number of particles over simulated time against its expectation
+ * N₀·e^{(λ−μ)(t−t₀)} and the spread of N(t) across 200 independent runs (5–95 % band, sampled
+ * exactly, see branching.ts). Expectation and runs restart from the actual count whenever the
+ * count changes for another reason (particles added or removed by hand) or the rates change.
  *
  * The curve is only sampled while the window is open.
  */
-export class BirthDeathPanel {
+export class BirthDeathPanel implements Instrument {
+  readonly id = 'population';
+  readonly title = 'Birth / death';
   private readonly value = byId('bd-value');
   private readonly info = byId('bd-info');
   private readonly toggle = byId<HTMLInputElement>('bd-enabled');
@@ -26,7 +32,10 @@ export class BirthDeathPanel {
   private readonly panel: CollapsiblePanel;
   private readonly birth: FormulaInput;
   private readonly death: FormulaInput;
-  private readonly series = new TimeSeries(['count', 'expected'] as const);
+  readonly series = new TimeSeries(['count', 'expected', 'lo', 'hi', 'runsMean'] as const);
+  /** Independent runs of N(t) from the same start (the spread across runs). */
+  private readonly runs: BranchingReplicas;
+  private runsT = 0;
   /** Start of the current expectation: time, count, and the process settings it assumes. */
   private base = { t: 0, n: 0, key: '' };
   private last = { n: -1, births: 0, deaths: 0 };
@@ -39,7 +48,10 @@ export class BirthDeathPanel {
       settings(): { enabled: boolean; birthRate: number; deathRate: number };
       set(change: { birthDeath?: boolean; birthRate?: number; deathRate?: number }): void;
     },
+    /** Random numbers for the independent runs (their own stream). */
+    replicaRng: Rng,
   ) {
+    this.runs = new BranchingReplicas(replicaRng);
     const rateInput = (id: string, key: 'birthRate' | 'deathRate') =>
       new FormulaInput(byId(id), '', {
         tryUse: (text) => validateRate(text),
@@ -74,6 +86,36 @@ export class BirthDeathPanel {
     this.value.textContent = s.enabled ? `N ${this.particles.count}` : 'off';
   }
 
+  get active(): boolean {
+    return this.panel.open;
+  }
+
+  setOpen(open: boolean): void {
+    this.panel.setOpen(open);
+  }
+
+  onFrame(ctx: FrameContext): void {
+    this.update(ctx.now);
+  }
+
+  readout(): Record<string, number> {
+    const n = this.series.length;
+    const last = (c: 'expected' | 'runsMean' | 'lo' | 'hi') => (n ? this.series.channels[c][n - 1] : NaN);
+    return {
+      count: this.particles.count,
+      expected: last('expected'),
+      runsMean: last('runsMean'),
+      runsLow: last('lo'),
+      runsHigh: last('hi'),
+      runsSd: this.panel.open ? this.runs.stats().sd : NaN,
+    };
+  }
+
+  reset(): void {
+    this.restart();
+    this.draw();
+  }
+
   /** Call every frame: samples the population curve (only while the window is open). */
   update(nowMs: number): void {
     const s = this.actions.settings();
@@ -87,10 +129,23 @@ export class BirthDeathPanel {
     // Changes of the count that the process did not make (hand edits, playback, …) and new
     // settings start a new expectation from the current state.
     const own = this.process.births - this.last.births - (this.process.deaths - this.last.deaths);
-    if (key !== this.base.key || (this.last.n >= 0 && n - this.last.n !== own)) this.base = { t, n, key };
+    if (key !== this.base.key || (this.last.n >= 0 && n - this.last.n !== own)) {
+      this.base = { t, n, key };
+      this.runs.start(n);
+      this.runsT = t;
+    }
     this.last = { n, births: this.process.births, deaths: this.process.deaths };
     const growth = s.enabled ? s.birthRate - s.deathRate : 0;
-    this.series.push(t, { count: n, expected: this.base.n * Math.exp(growth * (t - this.base.t)) });
+    if (s.enabled) this.runs.advance(t - this.runsT, s.birthRate, s.deathRate, MAX_PARTICLES);
+    this.runsT = t;
+    const r = this.runs.stats();
+    this.series.push(t, {
+      count: n,
+      expected: this.base.n * Math.exp(growth * (t - this.base.t)),
+      lo: r.lo,
+      hi: r.hi,
+      runsMean: r.mean,
+    });
     this.draw();
   }
 
@@ -100,11 +155,13 @@ export class BirthDeathPanel {
     this.process.resetCounts();
     const s = this.actions.settings();
     this.base = { t: this.particles.time, n: this.particles.count, key: `${s.enabled}|${s.birthRate}|${s.deathRate}` };
+    this.runs.start(this.particles.count);
+    this.runsT = this.particles.time;
     this.last = { n: this.particles.count, births: 0, deaths: 0 };
     this.lastRun = -Infinity;
   }
 
-  private draw(): void {
+  draw(): void {
     const s = this.actions.settings();
     const p = this.process;
     if (!s.enabled) {
@@ -117,7 +174,7 @@ export class BirthDeathPanel {
         `growth λ − μ = ${formatValue(s.birthRate - s.deathRate)} · ${lifetime}${full}`;
     }
     const { times, channels } = this.series;
-    this.plot.draw({ times, values: channels.count, reference: channels.expected });
+    this.plot.draw({ times, values: channels.count, reference: channels.expected, band: { lo: channels.lo, hi: channels.hi } });
   }
 }
 

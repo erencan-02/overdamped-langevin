@@ -109,7 +109,7 @@ export class PhysicsSettings extends SettingsGroup<PhysicsKey> {
   }
 }
 
-type AnalysisKey = 'kernelVariance' | 'showDensity' | 'observable';
+type AnalysisKey = 'kernelVariance' | 'showDensity' | 'observable' | 'ergodicF' | 'passageTarget';
 
 /** Settings of the equilibrium analysis and the observables window. */
 export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
@@ -122,6 +122,8 @@ export class AnalysisSettings extends SettingsGroup<AnalysisKey> {
     new BooleanField('showDensity'),
     // Checked by the observables window when applied (the LaTeX parser loads on demand).
     new StringField('observable', 500),
+    new StringField('ergodicF', 500),
+    new StringField('passageTarget', 500),
   ] as Field<AppState[AnalysisKey]>[];
 }
 

@@ -40,7 +40,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Zoom | **Scroll** |
 | Play / pause | **Play** button or <kbd>Space</kbd> |
 | Potential formula | *Potential Ψ* window (top left): switch on *Use a formula* and type Ψ(t, x, y) in LaTeX (x, y, r, \theta, t, \sigma), or click an example. The gradient is derived symbolically, so the dynamics have no lattice and no cap; Ψ may depend on time. The heat map and the 3D relief evaluate the formula on the GPU (compiled to GLSL and checked against the exact values first) |
-| Births and deaths | *Birth / death* window: switch on and set the rates λ and μ. Every particle has its own exponential birth and death clocks; a birth adds a particle at the parent's position, a death removes it. The plot compares N(t) with N₀e^{(λ−μ)t}, and recordings store every event (`birth_t`, `birth_parent`, `birth_child`, `death_t`, `death_id`) |
+| Births and deaths | *Birth / death* window: switch on and set the rates λ and μ. Every particle has its own exponential birth and death clocks; a birth adds a particle at the parent's position, a death removes it. The plot compares N(t) with N₀e^{(λ−μ)t} and with the 5–95 % band of 200 independent runs, and recordings store every event (`birth_t`, `birth_parent`, `birth_child`, `death_t`, `death_id`) |
 | Single step | <kbd>→</kbd> takes one step of Δt = 2 ms (or shows the next frame of a recording); **hold** <kbd>→</kbd> to play while it is held |
 | 3D view | **2D / 3D** switch next to Brush / Particles (or <kbd>2</kbd> / <kbd>3</kbd>): Ψ as a relief with the particles on it, computed on the GPU. The brush and the particle tools (click, Shift-drag spray, right-click remove) work on the surface; **middle-drag** or **Alt + drag** orbits, **Shift + middle-drag** pans, **scroll** zooms, one finger orbits on touch screens. The live camera works in 3D too; images and recordings are opened in 2D |
 | Grid / trails / contours | Toolbar toggles or <kbd>G</kbd> / <kbd>T</kbd> / <kbd>L</kbd> |
@@ -49,6 +49,9 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Image → particles | **Drop an image on the right half**, or Scene menu → *Image → particles…* (<kbd>Shift</kbd>+<kbd>I</kbd>) |
 | Live camera → Ψ | Camera button in the toolbar (<kbd>V</kbd>); click again to stop and keep the last frame |
 | Numerical scheme | Heun / Euler–Maruyama / Milstein in the panel, or <kbd>S</kbd> to cycle |
+| Ergodicity | *Ergodicity* window: the time average of f along one (ringed) particle against the ensemble mean |
+| First-passage times | *First passage* window: the fraction of particles that reached a target set {g > 0} over time, with mean times |
+| Convergence orders | *Δt sweep* window: strong and weak errors of every scheme against Δt on the current process (log–log) |
 | Drift & noise | **Drift & noise** window: add a drift $u(t,x,y)$ (e.g. a rotation) and/or state-dependent noise $s_1, s_2$ typed in LaTeX |
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
 | Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
@@ -114,6 +117,26 @@ which runs in the browser and is loaded only when the window is first opened (`s
 adapts it: allowed symbols x, y, r, θ, σ, Ψ, indicators, and messages such as *output must be a scalar*,
 shown under the input while the last valid function stays in use). Its batch evaluator computes f at all
 particles and grid cells at once.
+
+**Instruments.** All analysis windows are *instruments* behind one small interface
+(`src/instruments/instrument.ts`): `onStep` after every integrator step (for tools that follow paths),
+`onFrame` once per frame (for ensemble estimates, throttled and only while the window is open), a
+`TimeSeries` they plot, and named `readout()` values (e.g. `ergodicity.timeAverage`, `firstPassage.meanTau`,
+`sweep.strongOrder.milstein`). A registry hands them the steps and frames. Besides KL, the observable,
+‖∇Ψ‖ and the population, there are:
+
+- **Ergodicity**: $\frac1t\int_0^t f(X_s)\,ds$ along one tagged particle (accumulated every step) against the
+  ensemble mean $\frac1N\sum_i f(X^i_t)$; both tend to $\int f\,d\pi$ for an ergodic process, the first
+  only after the mixing time (try the double well with small σ).
+- **First passage** into $A = \{g > 0\}$ for the particles present at the start: checked after every step,
+  with deaths as censoring, so $P(\tau_A \le t)$ is a Kaplan–Meier estimate; it reports the mean τ of the
+  arrived particles and $E[\tau\wedge t] = \int_0^t S(u)\,du$ (equal to $E[\tau]$ once all have arrived).
+- **N(t) across runs**: 200 independent copies of the linear birth–death process, advanced with its exact
+  transition law (Kendall), give the 5–95 % band in the *Birth / death* window.
+- **Δt sweep**: M paths from the current particles, integrated over $[t, t+T]$ by every scheme at
+  $\Delta t = T/8,\dots,T/256$ and at $T/2048$ as reference, all with the same Brownian paths (coarse
+  increments are sums of fine ones); the slopes of the strong error $E|X_T - X_T^{\text{ref}}|$ and the weak
+  error $|E|X_T|^2 - E|X_T^{\text{ref}}|^2|$ are the measured orders.
 
 **Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
 estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its
@@ -233,6 +256,8 @@ src/
   sim/field.ts        chunked potential grid, brush, gradient
   sim/particles.ts    particle ensemble: state, sub-stepping, trails
   sim/process.ts      the Process interface (drift, diffusion, capabilities) and the app's SDE
+  sim/branching.ts    exact sampler for independent birth–death runs
+  instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
   sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler
   sim/presets.ts      ready-made landscapes

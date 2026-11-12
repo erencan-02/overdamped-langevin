@@ -11,6 +11,11 @@ import { applyPreset, type PresetName } from './sim/presets';
 import { SCHEME_ORDER, SCHEMES, type SchemeId } from './sim/schemes';
 import { type ProcessCapabilities, Sde } from './sim/process';
 import { ProcessPanel } from './ui/processPanel';
+import { chainSteps, InstrumentRegistry } from './instruments/instrument';
+import { GradientNormInstrument, KlInstrument, ObservableInstrument } from './instruments/builtins';
+import { ErgodicityInstrument } from './instruments/ergodicity';
+import { FirstPassageInstrument } from './instruments/firstPassage';
+import { StepSweepInstrument } from './instruments/stepSweep';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { CollapsiblePanel } from './ui/collapsiblePanel';
@@ -442,17 +447,69 @@ function main(): void {
     birth: (t, parent, child) => recorder.addBirth(t, parent, child),
     death: (t, id) => recorder.addDeath(t, id),
   });
-  particles.events = birthDeath;
-  const birthDeathPanel = new BirthDeathPanel(birthDeath, particles, {
-    settings: () => ({ enabled: state.birthDeath, birthRate: state.birthRate, deathRate: state.deathRate }),
-    set: (change) => session.apply({ physics: change }),
-  });
+  const birthDeathPanel = new BirthDeathPanel(
+    birthDeath,
+    particles,
+    {
+      settings: () => ({ enabled: state.birthDeath, birthRate: state.birthRate, deathRate: state.deathRate }),
+      set: (change) => session.apply({ physics: change }),
+    },
+    random.get('replicas'),
+  );
+
+  // The analysis tools, all behind one interface (see instruments/instrument.ts): each gets every
+  // frame, the path-following ones also every integrator step (after births and deaths).
+  const instruments = new InstrumentRegistry();
+  particles.events = chainSteps(birthDeath, instruments);
+  instruments.register(new GradientNormInstrument(potentialPanel));
+  instruments.register(birthDeathPanel);
+  const ergodicity = instruments.register(
+    new ErgodicityInstrument(particles, potential, {
+      expression: () => state.ergodicF,
+      setExpression: (tex) => session.apply({ analysis: { ergodicF: tex } }),
+      sigma: () => state.sigma,
+    }),
+  );
+  const firstPassage = instruments.register(
+    new FirstPassageInstrument(potential, {
+      expression: () => state.passageTarget,
+      setExpression: (tex) => session.apply({ analysis: { passageTarget: tex } }),
+      sigma: () => state.sigma,
+    }),
+  );
+  instruments.register(
+    new StepSweepInstrument(particles, {
+      process: processNow,
+      rng: () => random.get('sweep'),
+      blocked: () => (waiting() ? 'A formula is not ready yet: wait until it has compiled.' : null),
+    }),
+  );
+  instruments.register(
+    new ObservableInstrument(observables, observablePanel, {
+      sampled: (t) => {
+        const sample = observables.latest;
+        if (recorder.recording && sample) recorder.addObservable(t, sample, state.observable);
+      },
+    }),
+  );
+  instruments.register(
+    new KlInstrument(monitor, klPanel, {
+      showDensity: () => state.showDensity,
+      sampled: (t) => {
+        const sample = monitor.latest;
+        const region = monitor.region;
+        if (recorder.recording && sample && region) recorder.addKl(t, sample, region);
+      },
+    }),
+  );
 
   const syncUi = () => {
     birthDeath.configure(state.birthDeath, state.birthRate, state.deathRate);
     birthDeathPanel.sync();
     controls.sync();
     observablePanel.sync(); // e.g. the test function of a restored recording
+    ergodicity.sync();
+    firstPassage.sync();
     potentialPanel.sync(); // e.g. the potential of a restored recording
     processPanel.sync(); // e.g. the drift and noise of a restored recording
   };
@@ -808,8 +865,6 @@ function main(): void {
       }
     }
 
-    birthDeathPanel.update(now);
-    potentialPanel.update(now); // ‖∇Ψ‖, only while its window is open
 
     // Ψ at the current time (a formula may depend on t and σ), and its picture around the view.
     potential.setTime(particles.time, state.sigma);
@@ -831,19 +886,14 @@ function main(): void {
     if (potential.analytic && !formulaOnGpu) potential.updateDisplay(camera.bounds(), now);
 
     // Analysis first, so that the density drawn below belongs to this frame's particles.
-    monitor.keepRunning = recorder.recording || state.showDensity;
-    if (monitor.update(now, state.sigma, state.kernelVariance, state.showDensity ? 33 : 100)) {
-      klPanel.draw();
-      const sample = monitor.latest;
-      const region = monitor.region;
-      if (recorder.recording && sample && region) recorder.addKl(particles.time, sample, region);
-    }
-    observables.keepRunning = recorder.recording;
-    if (observables.update(now, state.sigma, state.kernelVariance)) {
-      observablePanel.draw();
-      const sample = observables.latest;
-      if (recorder.recording && sample) recorder.addObservable(particles.time, sample, state.observable);
-    }
+    instruments.frame({
+      now,
+      particles,
+      process: processNow(),
+      sigma: state.sigma,
+      kernelVariance: state.kernelVariance,
+      recording: recorder.recording,
+    });
     if (recorder.recording) {
       if (recorder.tick(now)) {
         controls.setRecording(false);
@@ -882,6 +932,7 @@ function main(): void {
         panning: input.panning,
         selection: input.selection,
         analysisBox: monitor.active || observables.active || potentialPanel.open ? (monitor.region ?? monitor.box) : null,
+        marker: ergodicity.marker(),
       });
     }
     const glsl = potential.compiled?.glsl;
@@ -926,6 +977,7 @@ function main(): void {
       observables,
       potential,
       sde,
+      instruments,
       birthDeath,
       viewSwitch,
       input,
