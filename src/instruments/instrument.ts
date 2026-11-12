@@ -35,6 +35,8 @@ export interface Instrument {
   readonly title: string;
   /** Computing now (its window is open, or something else needs it). */
   readonly active: boolean;
+  /** Its window is open. */
+  readonly open?: boolean;
   /** After every integrator step while active; `t` is the simulated time at the end of the step. */
   onStep?(particles: ParticleSystem, t: number): void;
   /** Once per animation frame. */

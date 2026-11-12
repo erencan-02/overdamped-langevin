@@ -77,6 +77,10 @@ export class StepSweepInstrument implements Instrument {
     return this.running;
   }
 
+  get open(): boolean {
+    return this.panel.open;
+  }
+
   setOpen(open: boolean): void {
     this.panel.setOpen(open);
   }

@@ -16,6 +16,8 @@ import { GradientNormInstrument, KlInstrument, ObservableInstrument } from './in
 import { ErgodicityInstrument } from './instruments/ergodicity';
 import { FirstPassageInstrument } from './instruments/firstPassage';
 import { StepSweepInstrument } from './instruments/stepSweep';
+import { ScenarioPanel } from './ui/scenarioPanel';
+import { applyScenario, captureScenario, type ScenarioHost } from './scenario/setup';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { CollapsiblePanel } from './ui/collapsiblePanel';
@@ -275,6 +277,9 @@ function main(): void {
       if (needs2D()) return;
       if (!busy.active) recordingInput.click();
     },
+    share() {
+      scenarioPanel.openShare();
+    },
     preset(name: string) {
       usePaintedPotential();
       liveCamera.stop();
@@ -285,7 +290,8 @@ function main(): void {
   controls.setGpuInfo(gpuInfo.available, gpuTip());
   viewSwitch.setGpu(state.gpu); // no 3D view without the GPU
   // The settings card collapses like the analysis windows (open at start).
-  new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {}).setOpen(true);
+  const settingsPanel = new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {});
+  settingsPanel.setOpen(true);
   // Formulas in the side panels (ρ̂_h in the KL window) are typeset with KaTeX, which is loaded
   // when that window is first opened.
   let sideMathLoaded = false;
@@ -611,6 +617,57 @@ function main(): void {
     edit: (label, change) => history.run(label, change),
   });
 
+  // ---------------------------------------------------------------- scenarios
+
+  // A scenario sets the app up (settings over a fresh app's, Ψ, particles, view, windows) and
+  // may carry a worksheet; see src/scenario/. Settings it does not mention are reset to these.
+  const fresh = initialState();
+  const freshSettings = new Session()
+    .register(new PhysicsSettings(fresh, () => {}, particles, random))
+    .register(new AnalysisSettings(fresh, () => {}))
+    .register(new DisplaySettings(fresh, () => {}))
+    .register(new ToolSettings(fresh, () => {}))
+    .capture();
+  const scenarioHost: ScenarioHost = {
+    session,
+    defaults: freshSettings,
+    field,
+    rng: { presets: random.get('presets'), positions: random.get('scenario'), colors: random.get('colors') },
+    reseed: () => random.reseed(state.seed),
+    prepare: () => {
+      if (playback.active) playback.exit();
+      if (recorder.recording) actions.toggleRecording();
+      liveCamera.stop();
+      input.cancel();
+      controls.closeOverlays();
+      history.clear(); // the scenario replaces Ψ and the particles
+      boxFromView = true; // the scenario sets the analysis box
+    },
+    showRect: (b) => camera.showRect(b.x0, b.y0, b.x1, b.y1),
+    viewBounds: () => camera.bounds(),
+    openPanels: (ids) => {
+      for (const i of instruments.all) i.setOpen?.(ids.includes(i.id));
+      processPanel.setOpen(ids.includes('process'));
+      settingsPanel.setOpen(ids.includes('settings'));
+    },
+    openPanelIds: () => [
+      ...instruments.all.filter((i) => i.open).map((i) => i.id),
+      ...(processPanel.open ? ['process'] : []),
+      ...(settingsPanel.open ? ['settings'] : []),
+    ],
+    resetInstruments: () => instruments.resetAll(),
+    setPlaying: (playing) => {
+      state.playing = playing;
+      controls.sync();
+    },
+  };
+  const scenarioPanel = new ScenarioPanel({
+    apply: (s) => applyScenario(s, scenarioHost),
+    capture: (o) => captureScenario(scenarioHost, o),
+    readouts: () => instruments.readouts(),
+    toast: (text) => controls.showToast(text),
+  });
+
   // ---------------------------------------------------------------- recordings & drag and drop
 
   const openRecording = async (file: File) => {
@@ -635,7 +692,17 @@ function main(): void {
     if (file) void openRecording(file);
   });
   new DropController(
-    [new ImageDropHandler(importer), new RecordingDropHandler((file) => void openRecording(file))],
+    [
+      new ImageDropHandler(importer),
+      // Scenario files share the recording's drop layout (both are "a file that sets everything up").
+      {
+        id: 'recording',
+        acceptsDrag: () => false,
+        acceptsFile: (file: File) => /\.json$/i.test(file.name) || file.type === 'application/json',
+        drop: (file: File) => void scenarioPanel.openFile(file),
+      },
+      new RecordingDropHandler((file) => void openRecording(file)),
+    ],
     () => busy.active || state.view === '3d',
     (message) => controls.showToast(message),
     () => (state.view === '3d' ? 'Images and recordings open in the 2D view. Press 2, then drop the file again.' : null),
@@ -964,6 +1031,9 @@ function main(): void {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+
+  // A scenario named in the address (#s=…, #scenario=…, #gist=…) is opened at start.
+  void scenarioPanel.loadFromHash();
 
   // Handy for debugging from the console.
   Object.assign(window, {

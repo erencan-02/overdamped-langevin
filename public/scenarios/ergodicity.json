@@ -1,0 +1,21 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Ergodicity",
+  "description": "The double well $\\Psi = \\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}$, all particles start in the left well. The Ergodicity window follows one particle (ringed) and plots its time average $\\frac{1}{t}\\int_0^t X^1_s\\,ds$ against the mean of $X^1$ over all particles at the same instant. For an ergodic process both converge to $\\int x\\,d\\pi = 0$.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}", "sigma": 1.1, "speed": 4 },
+    "analysis": { "ergodicF": "x" }
+  },
+  "particles": [{ "kind": "gaussian", "x": -2, "y": 0, "sx": 0.3, "n": 400 }],
+  "box": { "x0": -5, "y0": -3.5, "x1": 5, "y1": 3.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["ergodicity", "settings"],
+  "play": false,
+  "questions": [
+    { "text": "Which one gets close to 0 first: the time average of the ringed particle or the ensemble mean? Why?" },
+    { "text": "What do both averages converge to in the long run?", "kind": "number", "answer": 0, "tolerance": 0.25 },
+    { "text": "Lower σ to 0.7 and follow another particle. What happens to its time average over the same time? What does this say about the mixing time?" },
+    { "text": "Is the time average of a single run a good estimator of $\\int f\\,d\\pi$ here? When is it, in general?" }
+  ]
+}

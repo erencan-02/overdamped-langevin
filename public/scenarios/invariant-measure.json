@@ -1,0 +1,20 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Invariant measure",
+  "description": "A double well $\\Psi = \\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}$ with σ = 1. The particles start uniformly in a rectangle. The pink fill is the smoothed empirical measure $\\hat\\rho_h$; the KL window compares it with the Gibbs density $\\pi \\propto e^{-2\\Psi/\\sigma^2}$, the stationary solution of the Fokker–Planck equation $\\partial_t\\rho = \\nabla\\cdot(\\rho\\nabla\\Psi) + \\frac{\\sigma^2}{2}\\Delta\\rho$.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}", "sigma": 1, "speed": 2 },
+    "analysis": { "observable": "\\mathbf{1}_{x > 0}", "showDensity": true }
+  },
+  "particles": [{ "kind": "uniform", "x0": -4, "y0": -3, "x1": 4, "y1": 3, "n": 1500 }],
+  "box": { "x0": -5, "y0": -3.5, "x1": 5, "y1": 3.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["kl", "observable", "settings"],
+  "questions": [
+    { "text": "Where is $\\hat\\rho_h$ highest once it has settled, and why there?" },
+    { "text": "What does $P(X^1_t > 0)$ (the Observable) converge to?", "kind": "number", "answer": 0.5, "tolerance": 0.05 },
+    { "text": "The KL curve levels off near the dashed smoothing floor, not at 0. Why?" },
+    { "text": "Lower σ to 0.6. How does the invariant density change, and what does that do to the time KL needs to settle?" }
+  ]
+}

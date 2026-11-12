@@ -31,6 +31,10 @@ export class KlInstrument implements Instrument {
     return this.monitor.active;
   }
 
+  get open(): boolean {
+    return this.monitor.enabled; // the window sets it
+  }
+
   get series() {
     return this.monitor.series;
   }
@@ -74,6 +78,10 @@ export class ObservableInstrument implements Instrument {
     return this.monitor.active;
   }
 
+  get open(): boolean {
+    return this.monitor.enabled; // the window sets it
+  }
+
   get series() {
     return this.monitor.series;
   }
@@ -109,6 +117,10 @@ export class GradientNormInstrument implements Instrument {
   constructor(private readonly panel: PotentialPanel) {}
 
   get active(): boolean {
+    return this.panel.open;
+  }
+
+  get open(): boolean {
     return this.panel.open;
   }
 

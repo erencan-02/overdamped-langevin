@@ -90,6 +90,10 @@ export class BirthDeathPanel implements Instrument {
     return this.panel.open;
   }
 
+  get open(): boolean {
+    return this.panel.open;
+  }
+
   setOpen(open: boolean): void {
     this.panel.setOpen(open);
   }
