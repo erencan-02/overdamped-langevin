@@ -31,6 +31,14 @@ export class RecordingsPanel {
     this.render();
   }
 
+  /** Shows the panel even while it is empty (e.g. for the tutorial); returns how to undo it. */
+  reveal(): () => void {
+    this.section.hidden = false;
+    return () => {
+      this.section.hidden = !this.visible;
+    };
+  }
+
   /** There is a run being recorded or a finished one (the panel is shown then). */
   get visible(): boolean {
     return this.recorder.recording || this.recorder.runs.length > 0;

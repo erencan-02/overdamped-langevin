@@ -52,6 +52,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Ergodicity | *Ergodicity* window: the time average of f along one (ringed) particle against the ensemble mean |
 | First-passage times | *First passage* window: the fraction of particles that reached a target set {g > 0} over time, with mean times |
 | Convergence orders | *Δt sweep* window: strong and weak errors of every scheme against Δt on the current process (log–log) |
+| Tutorial | Book button at the right end of the toolbar: a guided tour of the toolbar, the side windows, scenarios, recordings and the legend (click to continue, <kbd>Esc</kbd> or × to leave) |
+| Fold the side windows | *Tools & analysis* header above the windows on the left |
 | Scenarios | *Scenario* window: course scenarios with worksheets, open a scenario file or a GitHub Gist, and *Create & share* (also Scene menu → *Share scenario link…*) |
 | Drift & noise | **Drift & noise** window: add a drift $u(t,x,y)$ (e.g. a rotation) and/or state-dependent noise $s_1, s_2$ typed in LaTeX |
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
@@ -295,6 +297,7 @@ src/
   sim/branching.ts    exact sampler for independent birth–death runs
   instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
   scenario/           scenario schema and migrations, link codec, applying and capturing set-ups
+  ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
 public/scenarios/     the course scenarios (JSON) and their index
   sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler

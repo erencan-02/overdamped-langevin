@@ -18,6 +18,8 @@ import { FirstPassageInstrument } from './instruments/firstPassage';
 import { StepSweepInstrument } from './instruments/stepSweep';
 import { ScenarioPanel } from './ui/scenarioPanel';
 import { applyScenario, captureScenario, type ScenarioHost } from './scenario/setup';
+import { Tutorial } from './ui/tutorial';
+import { appTutorialSteps } from './ui/tutorialSteps';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
 import { CollapsiblePanel } from './ui/collapsiblePanel';
@@ -279,6 +281,9 @@ function main(): void {
     },
     share() {
       scenarioPanel.openShare();
+    },
+    tutorial() {
+      tutorial.start();
     },
     preset(name: string) {
       usePaintedPotential();
@@ -680,6 +685,27 @@ function main(): void {
       if (narrow()) toolsPanel.setOpen(false);
     },
   });
+
+  // ---------------------------------------------------------------- tutorial
+
+  // A guided tour of the main areas (the book button). Steps live in ui/tutorialSteps.ts.
+  const tutorial = new Tutorial(
+    appTutorialSteps({
+      showTools: () => {
+        const was = toolsPanel.open;
+        toolsPanel.setOpen(true);
+        return () => toolsPanel.setOpen(was);
+      },
+      showRecordings: () => recordings.reveal(),
+    }),
+    {
+      starting: () => {
+        input.cancel(); // e.g. a stroke in progress
+        controls.closeOverlays(); // menus, the help dialog
+        stepKey.release();
+      },
+    },
+  );
 
   // ---------------------------------------------------------------- recordings & drag and drop
 

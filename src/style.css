@@ -1722,12 +1722,12 @@ body.in-playback .hint {
 @media (max-width: 400px) {
   /* Narrow phones (360 px): tighter toolbar so all buttons fit. */
   .toolbar {
-    gap: 1px;
+    gap: 0;
     padding: 5px 3px;
     max-width: calc(100vw - 8px);
   }
   .icon-btn {
-    width: 22px;
+    width: 20px;
   }
   .icon-btn.gpu-btn {
     padding: 0 4px;
@@ -1930,4 +1930,97 @@ body.in-playback .hint {
 }
 .sc-link {
   margin-top: 6px;
+}
+
+/* ------------------------------------------------------------------ tutorial */
+
+/* The tour covers the page and takes every click; the spotlight's huge shadow is the grey layer. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  cursor: pointer;
+}
+.tour:focus {
+  outline: none; /* focused only to receive keys */
+}
+.tour-spot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 0 9999px rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  transition:
+    transform 0.25s ease,
+    width 0.25s ease,
+    height 0.25s ease;
+}
+.tour-box {
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 14px 16px 12px;
+  border-radius: 14px;
+  background: var(--surface-solid);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 0.25s ease;
+}
+.tour-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.tour-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.tour-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.tour-count {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.tour-close {
+  position: fixed;
+  top: var(--gutter);
+  right: var(--gutter);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-solid);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+}
+.tour-close svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+.tour-close:focus-visible {
+  outline: 2px solid #3a9bdc;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot,
+  .tour-box {
+    transition: none;
+  }
 }

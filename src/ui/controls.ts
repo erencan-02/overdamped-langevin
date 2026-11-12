@@ -17,6 +17,8 @@ export interface ControlActions {
   openRecording(): void;
   /** Opens the scenario window's share section. */
   share(): void;
+  /** Starts the tutorial. */
+  tutorial(): void;
   togglePlay(): void;
   toggleGrid(): void;
   toggleTrails(): void;
@@ -122,6 +124,7 @@ export class Controls {
 
     // Help dialog
     $('help-btn').addEventListener('click', () => this.setHelp(true));
+    $('tour-btn').addEventListener('click', () => actions.tutorial());
     $('help-close').addEventListener('click', () => this.setHelp(false));
     this.help.addEventListener('pointerdown', (e) => {
       if (e.target === this.help) this.setHelp(false);
