@@ -190,9 +190,38 @@ export class ViewSwitch {
       scene.prepare(this.hooks.view2D());
       this.relief = 0;
     }
-    const start = fromPose ?? scene.getPose();
+    this.begin('3d', fromPose ?? scene.getPose(), this.pose3D(scene), 1);
+  }
+
+  /**
+   * The 2D view jumped to another place while the 3D view is up (an image or a recording was
+   * opened, a scenario applied, the view reset): the 3D view is rebuilt around the new place and
+   * rises from it again, as when it was opened. On the way back to 2D the flight would land on the
+   * old place, so 2D is shown at once instead. Nothing to do while the 3D view is not shown: it is
+   * built around the 2D view when it opens.
+   */
+  refit(): void {
+    const scene = this.scene;
+    if (!scene || this.opacity === 0) return;
+    if (this.mode === '2d') {
+      this.transition = null;
+      this.opacity = 0;
+      this.relief = 0;
+      scene.setCursor(null);
+      this.applyOpacity();
+      return;
+    }
+    this.transition = null; // a fresh rise, not the reversal of one in progress
+    scene.setCursor(null);
+    scene.prepare(this.hooks.view2D()); // flat, straight above the new place
+    this.relief = 0;
+    this.begin('3d', scene.getPose(), this.pose3D(scene), 1);
+  }
+
+  /** The tilted pose of the 3D view over the current 2D view. */
+  private pose3D(scene: Scene3DView): CameraPose {
     const home = scene.homePose(this.hooks.view2D());
-    this.begin('3d', start, { ...home, distance: home.distance * PULL_BACK, polar: TILT, azimuth: SOUTH }, 1);
+    return { ...home, distance: home.distance * PULL_BACK, polar: TILT, azimuth: SOUTH };
   }
 
   private leave3D(): void {
@@ -203,7 +232,7 @@ export class ViewSwitch {
     }
     scene.setControlsEnabled(false);
     scene.setCursor(null);
-    // Back to straight above the 2D view, which has not moved while in 3D.
+    // Back to straight above the 2D view (if it jumped while in 3D, refit followed it).
     this.begin('2d', scene.getPose(), scene.homePose(this.hooks.view2D()), 0);
   }
 

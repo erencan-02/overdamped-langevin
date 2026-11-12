@@ -174,15 +174,8 @@ function main(): void {
     },
     onError: (message) => controls.showToast(message),
   });
-  /**
-   * Images and recordings move the 2D view to where they are placed, outside what the 3D view
-   * shows, so they are opened in 2D. Returns true (with a hint) if that was refused.
-   */
-  const needs2D = (): boolean => {
-    if (state.view !== '3d') return false;
-    controls.showToast('Images and recordings open in the 2D view. Press 2 first.');
-    return true;
-  };
+  /** The 2D camera at the last frame (a change while in 3D re-centres the 3D view: refit). */
+  let lastCameraKey = '';
 
   const actions: ControlActions = {
     setMode(mode: Mode) {
@@ -282,7 +275,6 @@ function main(): void {
       camera.reset();
     },
     importImage(target) {
-      if (needs2D()) return;
       importer.openPicker(target);
     },
     setSeed(seed: number) {
@@ -291,7 +283,6 @@ function main(): void {
       controls.showToast(`Seed ${seed}: all random streams restarted`);
     },
     openRecording() {
-      if (needs2D()) return;
       if (!busy.active) recordingInput.click();
     },
     share() {
@@ -767,9 +758,8 @@ function main(): void {
       },
       new RecordingDropHandler((file) => void openRecording(file)),
     ],
-    () => busy.active || state.view === '3d',
+    () => busy.active, // works in 2D and 3D (the 3D view follows the place of what was opened)
     (message) => controls.showToast(message),
-    () => (state.view === '3d' ? 'Images and recordings open in the 2D view. Press 2, then drop the file again.' : null),
   );
 
   // ---------------------------------------------------------------- keyboard
@@ -1064,6 +1054,14 @@ function main(): void {
         marker: ergodicity.marker(),
         region: firstPassage.targetRegion(camera.bounds(), camera.scale, `${potential.revision}|${potential.epoch}`),
       });
+    }
+    // While the 3D view is up the mouse moves the 3D camera, never the 2D one, so a change of the
+    // 2D camera is a jump (an image or recording opened, a scenario applied, the view reset): the
+    // 3D view follows it.
+    const cameraKey = `${camera.x}|${camera.y}|${camera.scale}`;
+    if (cameraKey !== lastCameraKey) {
+      lastCameraKey = cameraKey;
+      viewSwitch.refit();
     }
     const glsl = potential.compiled?.glsl;
     viewSwitch.frame(
