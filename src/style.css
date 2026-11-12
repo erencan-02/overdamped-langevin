@@ -927,28 +927,37 @@ input[type='range']:active::-webkit-slider-thumb {
   font-size: 12px;
 }
 
-/* ------------------------------------------------------------------ legend */
+/* ------------------------------------------------------------------ right column */
 
+/*
+ * From below the toolbar to the bottom: the camera preview and the Scenario window at the top,
+ * recordings and the colour legend at the bottom. The two windows share the height and scroll
+ * inside themselves when they do not fit; the space between them lets clicks through.
+ */
 .right-col {
   position: fixed;
+  top: 76px;
   right: var(--gutter);
   bottom: var(--gutter);
-  width: 260px;
-  /* Leaves room for the camera preview at the top right. */
-  max-height: calc(100vh - 2 * var(--gutter) - 240px);
+  width: 272px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 10px;
-  overflow-y: auto;
-  scrollbar-width: none;
   pointer-events: none;
 }
-.right-col::-webkit-scrollbar {
-  display: none;
-}
+.right-col > .analysis,
 .right-col > .recordings {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
   pointer-events: auto;
+}
+/* Everything after the Scenario window sits at the bottom; the recordings keep their header. */
+.right-col > .recordings {
+  flex: none;
+  max-height: 45%;
+  margin-top: auto;
 }
 .legend {
   flex: none;
@@ -1065,9 +1074,9 @@ input[type='range']:active::-webkit-slider-thumb {
 /* ------------------------------------------------------------------ live camera */
 
 .cam-preview {
-  position: fixed;
-  top: 76px;
-  right: var(--gutter);
+  position: relative;
+  flex: none;
+  align-self: flex-end;
   width: 176px;
   padding: 4px;
   overflow: hidden;
@@ -1626,17 +1635,16 @@ body.in-playback .hint {
     top: 72px;
     bottom: auto;
     width: 220px;
-    max-height: 40vh;
+    max-height: 45vh;
   }
-  .cam-preview {
-    right: auto;
-    left: var(--gutter);
+  .right-col > .recordings {
+    margin-top: 0;
   }
   .left-col {
     width: auto;
     right: var(--gutter);
-    /* Stay below the collapsed Recordings card (top 72 px, 42 px high) at the top right. */
-    max-height: calc(100vh - var(--gutter) - 124px);
+    /* Stay below the collapsed Scenario and Recordings cards (top 72 px, 42 px high each) at the top right. */
+    max-height: calc(100vh - var(--gutter) - 176px);
   }
   .help-grid {
     grid-template-columns: 1fr;

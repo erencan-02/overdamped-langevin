@@ -72,7 +72,8 @@ export class ScenarioPanel {
       toast(text: string): void;
     },
   ) {
-    const parts = kit.createPanel({ id: 'scenario', title: 'Scenario', label: 'Scenario', before: 'potential' });
+    // At the top right, apart from the analysis windows on the left.
+    const parts = kit.createPanel({ id: 'scenario', title: 'Scenario', label: 'Scenario', before: 'recordings', column: '.right-col' });
     this.value = parts.value;
     const body = parts.body;
 

@@ -382,8 +382,15 @@
       </section>
     </div>
 
-    <!-- Colour legend + readout -->
+    <!-- Right column: camera preview and the Scenario window at the top, recordings, colour legend
+         and readout at the bottom -->
     <div class="right-col">
+      <!-- Live camera preview (mirrored) -->
+      <div class="cam-preview card" id="cam-preview" hidden>
+        <video id="cam-video" muted playsinline aria-label="Camera preview"></video>
+        <span class="cam-badge" id="cam-badge"><span class="cam-dot"></span><span id="cam-badge-text">Live</span></span>
+      </div>
+
       <!-- Recorded runs -->
       <section class="recordings card collapsed" id="recordings" aria-label="Recordings">
         <button class="analysis-head" id="recordings-toggle" type="button" aria-expanded="false" aria-controls="recordings-body">
@@ -409,12 +416,6 @@
 
     <!-- Toast -->
     <div class="toast" id="toast" role="status"><span id="toast-text"></span><button id="toast-action" type="button" hidden></button></div>
-
-    <!-- Live camera preview (mirrored) -->
-    <div class="cam-preview card" id="cam-preview" hidden>
-      <video id="cam-video" muted playsinline aria-label="Camera preview"></video>
-      <span class="cam-badge" id="cam-badge"><span class="cam-dot"></span><span id="cam-badge-text">Live</span></span>
-    </div>
 
     <!-- Image import: drop zone, loading overlay, file picker -->
     <input type="file" id="image-input" accept="image/*" hidden />
