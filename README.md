@@ -176,6 +176,23 @@ The course scenarios live in `public/scenarios/` (one file each, listed in `inde
 | [Stochastic resonance](https://erencan-02.github.io/overdamped-langevin/#scenario=stochastic-resonance) | a slowly tilting double well plus noise |
 | [Births and deaths](https://erencan-02.github.io/overdamped-langevin/#scenario=birth-death) | N(t) against N₀e^{(λ−μ)t} and the spread between runs (branching, reaction terms) |
 
+**Embedding.** The app can be put into any web page with an iframe; it is a static site and GitHub
+Pages sends no header that forbids framing. *Create & share → Copy embed code* in the Scenario window
+copies a ready snippet for the current set-up (scenario and worksheet travel in the address):
+
+```html
+<iframe src="https://erencan-02.github.io/overdamped-langevin/?embed#scenario=metastability"
+        title="Langevin Dynamics" width="100%" height="640" style="border: 0; border-radius: 12px"
+        allow="camera; clipboard-write; fullscreen" loading="lazy"></iframe>
+```
+
+Inside a frame (or with `?embed`) the side windows start folded and the Scene menu and the title card
+offer *Open the full app ↗*. `?tools=open` or `?tools=closed` sets whether the side windows start open
+(`closed` also keeps a scenario from opening them). The `allow` list lets the live camera and copying to
+the clipboard work in the frame; without it the camera reports that it was blocked, and copying falls back
+to a text field. Answers to worksheets are stored per site by the browser, so in an embedded page they may
+be kept apart from the full app's.
+
 **Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
 estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its
 maximum, a hue that appears nowhere in the colour map of Ψ. It uses the same grid as the KL estimate and is

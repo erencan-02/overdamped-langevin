@@ -19,6 +19,8 @@ export interface ControlActions {
   share(): void;
   /** Starts the tutorial. */
   tutorial(): void;
+  /** Opens the app on its own in a new tab (when embedded). */
+  openFull(): void;
   togglePlay(): void;
   toggleGrid(): void;
   toggleTrails(): void;
@@ -116,6 +118,7 @@ export class Controls {
       else if (b.dataset.action === 'import-image-particles') actions.importImage('particles');
       else if (b.dataset.action === 'open-recording') actions.openRecording();
       else if (b.dataset.action === 'share') actions.share();
+      else if (b.dataset.action === 'open-full') actions.openFull();
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {

@@ -20,6 +20,7 @@ import { ScenarioPanel } from './ui/scenarioPanel';
 import { applyScenario, captureScenario, type ScenarioHost } from './scenario/setup';
 import { Tutorial } from './ui/tutorial';
 import { buildSideWindows } from './ui/sideWindows';
+import { fullAppUrl, isEmbedded, toolsParam } from './ui/embed';
 import { appTutorialSteps } from './ui/tutorialSteps';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
@@ -59,6 +60,20 @@ import { Overlay } from './view/overlay';
 function main(): void {
   // The side windows first: everything below looks up their elements.
   buildSideWindows();
+  // Embedded in another page (an iframe): a compact start and a way out to the full app.
+  const embedded = isEmbedded();
+  document.documentElement.classList.toggle('embedded', embedded);
+  if (embedded) {
+    document.querySelector<HTMLElement>('[data-action="open-full"]')!.hidden = false;
+    const open = document.createElement('a');
+    open.className = 'brand-open';
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.textContent = 'Open the full app ↗';
+    open.addEventListener('click', () => (open.href = fullAppUrl())); // the address at the time of the click
+    open.href = fullAppUrl();
+    document.querySelector('.brand')?.append(open);
+  }
   const stage = document.getElementById('stage')!;
   const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
   const overlayCanvas = document.getElementById('overlay') as HTMLCanvasElement;
@@ -288,6 +303,9 @@ function main(): void {
     tutorial() {
       tutorial.start();
     },
+    openFull() {
+      window.open(fullAppUrl(), '_blank', 'noopener');
+    },
     preset(name: string) {
       usePaintedPotential();
       liveCamera.stop();
@@ -308,7 +326,7 @@ function main(): void {
   const toolsPanel = new CollapsiblePanel({ section: 'left-col', toggle: 'left-toggle', body: 'left-body' }, (open) => {
     if (open && narrow()) scenarioPanel.setOpen(false);
   });
-  toolsPanel.setOpen(!narrow());
+  toolsPanel.setOpen(toolsParam() ?? (!narrow() && !embedded));
   // Formulas in the side panels (ρ̂_h in the KL window) are typeset with KaTeX, which is loaded
   // when that window is first opened.
   let sideMathLoaded = false;
@@ -663,7 +681,8 @@ function main(): void {
     showRect: (b) => camera.showRect(b.x0, b.y0, b.x1, b.y1),
     viewBounds: () => camera.bounds(),
     openPanels: (ids) => {
-      if (ids.length > 0) toolsPanel.setOpen(true); // the windows it opens are on the left
+      // The windows it opens are on the left (unless the embedding page asked for them folded).
+      if (ids.length > 0 && toolsParam() !== false) toolsPanel.setOpen(true);
       for (const i of instruments.all) i.setOpen?.(ids.includes(i.id));
       processPanel.setOpen(ids.includes('process'));
       settingsPanel.setOpen(ids.includes('settings'));

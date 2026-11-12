@@ -11,6 +11,7 @@ import {
 import type { Camera } from '../view/camera';
 import { rgbaToSample } from './pixels';
 import { type GridPlacement, writePotential } from './writePotential';
+import { isEmbedded } from '../ui/embed';
 
 /**
  * Sample spacing relative to the blur width. The potential is blurred with σ = IMAGE_BLUR_WORLD
@@ -280,7 +281,9 @@ export function cameraErrorMessage(err: unknown): string {
   switch (name) {
     case 'NotAllowedError':
     case 'SecurityError':
-      return 'Camera access was blocked. Allow the camera for this site in your browser settings.';
+      return isEmbedded()
+        ? 'Camera access was blocked. In an embedded page the iframe needs allow="camera"; or open the full app (Scene menu).'
+        : 'Camera access was blocked. Allow the camera for this site in your browser settings.';
     case 'NotFoundError':
     case 'OverconstrainedError':
       return 'No camera was found on this device.';

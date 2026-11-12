@@ -1662,7 +1662,9 @@ body.in-playback .hint {
     display: none;
   }
 }
-@media (max-width: 640px) {
+@media (max-width: 900px) {
+  /* Compact toolbar (icons only) wherever the full one (about 820 px wide) does not fit,
+     e.g. tablets and pages that embed the app. */
   .seg-btn span,
   #play-label {
     display: none;
@@ -1676,8 +1678,6 @@ body.in-playback .hint {
   }
   .toolbar {
     max-width: calc(100vw - 2 * var(--gutter));
-  }
-  .toolbar {
     gap: 2px;
     padding: 4px;
   }
@@ -1687,6 +1687,8 @@ body.in-playback .hint {
   .icon-btn {
     width: 30px;
   }
+}
+@media (max-width: 640px) {
   .legend {
     display: none;
   }
@@ -2023,4 +2025,19 @@ body.in-playback .hint {
   .tour-box {
     transition: none;
   }
+}
+
+/* ------------------------------------------------------------------ embedded in another page */
+
+.brand-open {
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #2563eb;
+  text-decoration: none;
+  pointer-events: auto;
+}
+.brand-open:hover {
+  text-decoration: underline;
 }

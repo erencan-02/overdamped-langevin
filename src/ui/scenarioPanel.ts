@@ -11,6 +11,7 @@ import { parseScenario, type Scenario, type ScenarioQuestion } from '../scenario
 import { type CaptureOptions, checkAnswer, parseQuestionLines, questionLines } from '../scenario/setup';
 import { CollapsiblePanel } from './collapsiblePanel';
 import { downloadBlob, safeFileName } from './download';
+import { embedUrl, iframeCode } from './embed';
 import * as kit from './panelKit';
 
 /** An entry of public/scenarios/index.json. */
@@ -130,7 +131,8 @@ export class ScenarioPanel {
     const particles = check('Include the particles', true);
     const potential = check('Include the painted Ψ (can be large)', false);
     const play = check('Start playing when opened', false);
-    const [copy, download] = kit.buttons(details, ['Copy link', 'Download .json']);
+    const [copy, embed] = kit.buttons(details, ['Copy link', 'Copy embed code']);
+    const [download] = kit.buttons(details, ['Download .json']);
     const link = el('input', 'sc-link');
     link.type = 'text';
     link.readOnly = true;
@@ -139,7 +141,8 @@ export class ScenarioPanel {
     details.append(link);
     const message = kit.info(details);
     this.share = { title, description, questions, particles, potential, play, link, message, details };
-    copy.addEventListener('click', () => void this.copyLink());
+    copy.addEventListener('click', () => void this.copyLink('link'));
+    embed.addEventListener('click', () => void this.copyLink('embed'));
     download.addEventListener('click', () => this.downloadScenario());
 
     // Opening from a file or a Gist.
@@ -395,10 +398,16 @@ export class ScenarioPanel {
     return r.scenario;
   }
 
-  private async copyLink(): Promise<void> {
+  /**
+   * Copies a link to the current set-up, or (`embed`) the HTML of an iframe that shows it in
+   * another page (see embed.ts). Both carry the scenario in the address.
+   */
+  private async copyLink(kind: 'link' | 'embed'): Promise<void> {
     const s = this.captureChecked();
     if (!s) return;
-    const url = `${location.origin}${location.pathname}#s=${encodeScenario(s)}`;
+    const hash = `#s=${encodeScenario(s)}`;
+    const url = kind === 'embed' ? embedUrl(hash) : `${location.origin}${location.pathname}${hash}`;
+    const text = kind === 'embed' ? iframeCode(url, `Langevin Dynamics: ${s.title}`) : url;
     const { link, message } = this.share;
     if (url.length > MAX_LINK_LENGTH) {
       link.hidden = true;
@@ -409,13 +418,16 @@ export class ScenarioPanel {
       return;
     }
     link.hidden = false;
-    link.value = url;
+    link.value = text;
     try {
-      await navigator.clipboard.writeText(url);
-      message.textContent = `Link copied (${url.length} characters). Anyone who opens it gets this set-up.`;
+      await navigator.clipboard.writeText(text);
+      message.textContent =
+        kind === 'embed'
+          ? 'Embed code copied. Paste it into a web page (HTML): the page then shows this set-up, with its questions.'
+          : `Link copied (${url.length} characters). Anyone who opens it gets this set-up.`;
     } catch {
       link.select();
-      message.textContent = 'Copy the link above (the clipboard is not available here).';
+      message.textContent = `Copy the ${kind === 'embed' ? 'code' : 'link'} above (the clipboard is not available here).`;
     }
   }
 
