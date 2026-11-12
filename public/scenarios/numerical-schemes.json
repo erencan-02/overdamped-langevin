@@ -1,0 +1,27 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Numerical schemes",
+  "description": "An Ornstein–Uhlenbeck drift with multiplicative noise, $dX^k_t = -X^k_t\\,dt + \\sigma\\sqrt{1 + (X^k_t)^2}\\,dW^k_t$ (Drift & noise window). The Δt sweep integrates many paths with every scheme at several step sizes, all driven by the same Brownian paths, and fits the convergence orders: the strong error $\\mathbb{E}|X_T - X_T^{\\mathrm{ref}}|$ and the weak error $|\\mathbb{E}|X_T|^2 - \\mathbb{E}|X_T^{\\mathrm{ref}}|^2|$.",
+  "settings": {
+    "physics": {
+      "potentialMode": "formula",
+      "potentialTex": "\\frac{x^2 + y^2}{2}",
+      "sigma": 0.8,
+      "noiseFormula": true,
+      "noiseS1": "\\sigma\\sqrt{1 + x^2}",
+      "noiseS2": "\\sigma\\sqrt{1 + y^2}"
+    }
+  },
+  "particles": [{ "kind": "gaussian", "x": 1, "y": 1, "sx": 0.5, "n": 400 }],
+  "box": { "x0": -6, "y0": -4.5, "x1": 6, "y1": 4.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["sweep", "process"],
+  "questions": [
+    { "text": "Run the sweep. Strong order of Euler–Maruyama for this (multiplicative) noise?", "kind": "number", "answer": 0.5, "tolerance": 0.15 },
+    { "text": "Strong order of Milstein?", "kind": "number", "answer": 1, "tolerance": 0.15 },
+    { "text": "Switch the state-dependent noise off (Drift & noise) and run the sweep again. Strong order of Euler–Maruyama now?", "kind": "number", "answer": 1, "tolerance": 0.15 },
+    { "text": "Why do Euler–Maruyama and Milstein give identical results for additive noise?" },
+    { "text": "Strong or weak order: which one matters when you only want $\\mathbb{E} f(X_T)$, and why can a scheme be good in one and poor in the other?" }
+  ]
+}

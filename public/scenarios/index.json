@@ -1,0 +1,10 @@
+[
+  { "id": "brownian-motion", "title": "Brownian motion", "topic": "√t scaling, quadratic variation" },
+  { "id": "ornstein-uhlenbeck", "title": "Ornstein–Uhlenbeck", "topic": "stationary variance σ²/2k" },
+  { "id": "invariant-measure", "title": "Invariant measure", "topic": "Fokker–Planck, Gibbs density" },
+  { "id": "ergodicity", "title": "Ergodicity", "topic": "time vs. ensemble averages" },
+  { "id": "metastability", "title": "Metastability", "topic": "Kramers / Arrhenius escape law" },
+  { "id": "numerical-schemes", "title": "Numerical schemes", "topic": "strong vs. weak order" },
+  { "id": "stochastic-resonance", "title": "Stochastic resonance", "topic": "a tilting double well with noise" },
+  { "id": "birth-death", "title": "Births and deaths", "topic": "branching, reaction terms" }
+]

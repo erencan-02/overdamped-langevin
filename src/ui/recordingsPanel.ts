@@ -1,4 +1,5 @@
 import type { Recorder, Run } from '../record/recorder';
+import { downloadBlob } from './download';
 
 const DOWNLOAD_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11" /><path d="m7 10.5 5 5 5-5" /><path d="M5 19.5h14" /></svg>';
@@ -102,15 +103,7 @@ export class RecordingsPanel {
     button.classList.add('busy');
     try {
       const bytes = await run.toNpz();
-      const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName(run);
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      downloadBlob(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }), fileName(run));
     } catch (err) {
       console.error(err);
       this.hooks.toast('The recording could not be exported.');

@@ -111,6 +111,10 @@ export class ErgodicityInstrument implements Instrument {
     return this.panel.open && this.fn !== null;
   }
 
+  get open(): boolean {
+    return this.panel.open;
+  }
+
   setOpen(open: boolean): void {
     this.panel.setOpen(open);
   }

@@ -1,0 +1,20 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Metastability",
+  "description": "The double well $\\Psi = \\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}$ has its minima at $x = \\pm 2$ and a saddle at the origin, a barrier of height $\\Delta\\Psi = 1$. All particles start in the left well. The First passage window measures $\\tau = \\inf\\{t : X^1_t > 0\\}$, the time to reach the saddle. Kramers' law says $\\mathbb{E}\\tau \\propto e^{2\\Delta\\Psi/\\sigma^2}$ for small σ.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}", "sigma": 1, "speed": 4 },
+    "analysis": { "passageTarget": "x" }
+  },
+  "particles": [{ "kind": "point", "x": -2, "y": 0, "n": 300 }],
+  "box": { "x0": -5, "y0": -3.5, "x1": 5, "y1": 3.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["firstPassage", "settings"],
+  "questions": [
+    { "text": "Press play and wait until all particles have arrived. What is $\\mathbb{E}\\tau$ at σ = 1? (The check compares with what the app measured.)", "kind": "number", "readout": "firstPassage.meanTau", "tolerance": 0.05, "relative": true },
+    { "text": "Kramers' law: by what factor should $\\mathbb{E}\\tau$ grow when σ goes from 1 to 0.8?", "kind": "number", "answer": 3.08, "tolerance": 0.1 },
+    { "text": "Set σ = 0.8, restart the measurement (button in the window) with all particles back in the left well, and measure again. Does the factor match Kramers' law? What could explain a difference?" },
+    { "text": "Is $\\tau$ roughly exponentially distributed? Look at the shape of $P(\\tau \\le t)$." }
+  ]
+}

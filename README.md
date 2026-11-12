@@ -52,6 +52,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Ergodicity | *Ergodicity* window: the time average of f along one (ringed) particle against the ensemble mean |
 | First-passage times | *First passage* window: the fraction of particles that reached a target set {g > 0} over time, with mean times |
 | Convergence orders | *Δt sweep* window: strong and weak errors of every scheme against Δt on the current process (log–log) |
+| Scenarios | *Scenario* window: course scenarios with worksheets, open a scenario file or a GitHub Gist, and *Create & share* (also Scene menu → *Share scenario link…*) |
 | Drift & noise | **Drift & noise** window: add a drift $u(t,x,y)$ (e.g. a rotation) and/or state-dependent noise $s_1, s_2$ typed in LaTeX |
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
 | Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
@@ -137,6 +138,41 @@ particles and grid cells at once.
   $\Delta t = T/8,\dots,T/256$ and at $T/2048$ as reference, all with the same Brownian paths (coarse
   increments are sums of fine ones); the slopes of the strong error $E|X_T - X_T^{\text{ref}}|$ and the weak
   error $|E|X_T|^2 - E|X_T^{\text{ref}}|^2|$ are the measured orders.
+
+**Scenarios and worksheets.** A *scenario* is a whole set-up as JSON: settings (process, Ψ formula,
+σ, scheme, seed, rates, test functions, …), a painted Ψ (preset or lattice), initial particles (points,
+Gaussians, uniform boxes, explicit positions; sampled from the seed, so everyone gets the same), the
+analysis box and view, which windows are open, whether it starts playing, and an optional worksheet.
+Questions can be free text, a number checked against a value with a tolerance, a choice, or a number
+checked against a value *the app measures* (an instrument readout such as `firstPassage.meanTau`).
+
+- **Share**: *Create & share* in the Scenario window captures the current set-up (settings that equal a
+  fresh app's are left out), adds a title, description and questions (one per line, e.g.
+  `Mean exit time? = @firstPassage.meanTau ± 10%`), and copies a link: the JSON deflated with fflate,
+  base64url-encoded in the URL hash (`#s=…`). The hash never reaches a server, so this works on GitHub Pages.
+  Scenarios too long for a link (many particles, a painted Ψ) are downloaded as `.json` instead, which
+  can be opened from the window, dropped on the page, or uploaded as a public GitHub Gist and shared as
+  `…#gist=<id>`.
+- **Safety**: every scenario is validated with a schema (`src/scenario/schema.ts`, [valibot](https://valibot.dev/)),
+  older versions are migrated by their version number (version 0 is a settings snapshot as stored in
+  recordings), settings then pass the session's typed fields, formulas only go through the Compute Engine
+  parser (never evaluated as JavaScript), and text is shown as text with `$…$` typeset by KaTeX. Links,
+  files and Gists are size-limited before and after decompression.
+- **Answers** stay in the browser (localStorage, per scenario) and can be downloaded as a JSON file
+  with each answer and whether it was correct.
+
+The course scenarios live in `public/scenarios/` (one file each, listed in `index.json`):
+
+| Scenario | What it explores |
+| --- | --- |
+| [Brownian motion](https://erencan-02.github.io/overdamped-langevin/#scenario=brownian-motion) | Ψ = 0, a point cloud: how does the width grow? (√t scaling, quadratic variation) |
+| [Ornstein–Uhlenbeck](https://erencan-02.github.io/overdamped-langevin/#scenario=ornstein-uhlenbeck) | Ψ = k r²/2: does the cloud keep spreading? (stationary variance σ²/2k) |
+| [Invariant measure](https://erencan-02.github.io/overdamped-langevin/#scenario=invariant-measure) | a double well, ρ̂ₕ against e^{−2Ψ/σ²} (Fokker–Planck, Gibbs density) |
+| [Ergodicity](https://erencan-02.github.io/overdamped-langevin/#scenario=ergodicity) | one particle over a long time against many at one instant |
+| [Metastability](https://erencan-02.github.io/overdamped-langevin/#scenario=metastability) | mean time to cross the barrier against σ (Kramers / Arrhenius) |
+| [Numerical schemes](https://erencan-02.github.io/overdamped-langevin/#scenario=numerical-schemes) | Euler–Maruyama, Heun and Milstein with multiplicative noise (strong vs. weak order) |
+| [Stochastic resonance](https://erencan-02.github.io/overdamped-langevin/#scenario=stochastic-resonance) | a slowly tilting double well plus noise |
+| [Births and deaths](https://erencan-02.github.io/overdamped-langevin/#scenario=birth-death) | N(t) against N₀e^{(λ−μ)t} and the spread between runs (branching, reaction terms) |
 
 **Smoothed empirical measure.** *Show ρ̂ₕ* in the KL window (<kbd>D</kbd>) draws the kernel density
 estimate on the scene as a light hot-pink fill with bold pink iso-density lines at 20–80 % of its
@@ -258,6 +294,8 @@ src/
   sim/process.ts      the Process interface (drift, diffusion, capabilities) and the app's SDE
   sim/branching.ts    exact sampler for independent birth–death runs
   instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
+  scenario/           scenario schema and migrations, link codec, applying and capturing set-ups
+public/scenarios/     the course scenarios (JSON) and their index
   sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)
   sim/rng.ts          xoshiro128** + ziggurat normal sampler
   sim/presets.ts      ready-made landscapes

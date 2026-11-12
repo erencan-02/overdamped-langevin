@@ -1,0 +1,25 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Stochastic resonance",
+  "description": "A double well that tilts slowly back and forth, $\\Psi(t, x, y) = \\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2} + \\frac{3x}{20}\\sin\\left(\\frac{t}{5}\\right)$. The tilt alone is too weak to push particles over the barrier; noise does that. The Observable window shows the fraction of particles in the right well, $P(X^1_t > 0)$. Try σ = 0.5, 0.8 and 1.2 (restart the scenario in between and change σ).",
+  "settings": {
+    "physics": {
+      "potentialMode": "formula",
+      "potentialTex": "\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2} + \\frac{3x}{20}\\sin\\left(\\frac{t}{5}\\right)",
+      "sigma": 0.8,
+      "speed": 5
+    },
+    "analysis": { "observable": "\\mathbf{1}_{x > 0}" }
+  },
+  "particles": [{ "kind": "gaussian", "x": -2, "y": 0, "sx": 0.3, "n": 400 }],
+  "box": { "x0": -5, "y0": -3.5, "x1": 5, "y1": 3.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["observable", "settings"],
+  "questions": [
+    { "text": "What is the period of the forcing?", "kind": "number", "answer": 31.42, "tolerance": 0.5 },
+    { "text": "At σ = 0.5, do the particles follow the tilt? Describe the curve." },
+    { "text": "At which σ does the fraction in the right well follow the forcing most regularly?", "kind": "choice", "choices": ["0.5", "0.8", "1.2"], "answer": "0.8" },
+    { "text": "Explain with Kramers' law why too little and too much noise both destroy the synchronisation." }
+  ]
+}

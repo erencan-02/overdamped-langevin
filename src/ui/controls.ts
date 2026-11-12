@@ -15,6 +15,8 @@ export interface ControlActions {
   setScheme(id: SchemeId): void;
   setSeed(seed: number): void;
   openRecording(): void;
+  /** Opens the scenario window's share section. */
+  share(): void;
   togglePlay(): void;
   toggleGrid(): void;
   toggleTrails(): void;
@@ -111,6 +113,7 @@ export class Controls {
       else if (b.dataset.action === 'import-image') actions.importImage('potential');
       else if (b.dataset.action === 'import-image-particles') actions.importImage('particles');
       else if (b.dataset.action === 'open-recording') actions.openRecording();
+      else if (b.dataset.action === 'share') actions.share();
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {

@@ -1,0 +1,26 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Births and deaths",
+  "description": "Every particle gives birth at rate λ = 0.6 (the child starts at its parent's position) and dies at rate μ = 0.4, with independent exponential clocks. The number of particles $N(t)$ is a linear birth–death process with $\\mathbb{E}N(t) = N_0 e^{(\\lambda-\\mu)t}$. The Birth / death window shows your run, this expectation and the 5–95 % band of 200 independent runs. The density follows a Fokker–Planck equation with a reaction term, $\\partial_t\\rho = \\nabla\\cdot(\\rho\\nabla\\Psi) + \\frac{\\sigma^2}{2}\\Delta\\rho + (\\lambda - \\mu)\\rho$.",
+  "settings": {
+    "physics": {
+      "potentialMode": "formula",
+      "potentialTex": "\\frac{x^2 + y^2}{4}",
+      "sigma": 0.8,
+      "birthDeath": true,
+      "birthRate": 0.6,
+      "deathRate": 0.4
+    }
+  },
+  "particles": [{ "kind": "gaussian", "x": 0, "y": 0, "sx": 1, "n": 100 }],
+  "box": { "x0": -6, "y0": -4.5, "x1": 6, "y1": 4.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["population"],
+  "questions": [
+    { "text": "Expected number of particles at $t = 5$, starting from $N_0 = 100$?", "kind": "number", "answer": 271.8, "tolerance": 3 },
+    { "text": "Does your run stay inside the band? How wide is the band at $t = 5$ compared with its mean?" },
+    { "text": "Set λ = μ = 0.5 and restart the plot. For λ = μ, $\\mathrm{Var}\\,N(t) = 2N_0\\lambda t$. Standard deviation at $t = 4$ for $N_0 = 100$?", "kind": "number", "answer": 20, "tolerance": 1 },
+    { "text": "With λ = μ the expected number is constant. What happens to a single run in the long run, and why?" }
+  ]
+}

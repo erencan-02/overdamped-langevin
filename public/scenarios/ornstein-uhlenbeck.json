@@ -1,0 +1,21 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Ornstein–Uhlenbeck",
+  "description": "The potential $\\Psi = \\frac{k}{2}(x^2 + y^2)$ with $k = 1$ pulls every particle back to the origin with force $-kX$, so $dX_t = -kX_t\\,dt + \\sigma\\,dW_t$. All particles start at $(3, 2)$. Press play and watch the Observable window ($\\mathbb{E}|X_t|^2$ against the exact value under the stationary law).",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{x^2 + y^2}{2}", "sigma": 0.8 },
+    "analysis": { "observable": "x^2 + y^2" }
+  },
+  "particles": [{ "kind": "point", "x": 3, "y": 2, "n": 500 }],
+  "box": { "x0": -6, "y0": -4.5, "x1": 6, "y1": 4.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["observable", "kl", "settings"],
+  "questions": [
+    { "text": "Does the cloud keep spreading as in Brownian motion? Describe what happens to its centre and its size." },
+    { "text": "Stationary value of $\\mathbb{E}|X_t|^2$ for σ = 0.8, k = 1?", "kind": "number", "answer": 0.64, "tolerance": 0.06 },
+    { "text": "Give the stationary variance of one coordinate as a formula in σ and k." },
+    { "text": "Set σ = 1.2. New stationary value of $\\mathbb{E}|X_t|^2$?", "kind": "number", "answer": 1.44, "tolerance": 0.12 },
+    { "text": "How long does it take to get there? Compare with the relaxation rate $k$ of the mean, $\\mathbb{E}X_t = e^{-kt}X_0$." }
+  ]
+}

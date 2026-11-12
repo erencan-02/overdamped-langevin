@@ -22,6 +22,7 @@
     "@cortex-js/compute-engine": "0.185.1",
     "fflate": "0.8.2",
     "katex": "0.16.25",
-    "three": "0.186.0"
+    "three": "0.186.0",
+    "valibot": "1.5.0"
   }
 }

@@ -1,0 +1,20 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Brownian motion",
+  "description": "Free Brownian motion $dX_t = \\sigma\\,dW_t$: the potential is $\\Psi = 0$, and all 500 particles start at the origin. Press play (space) and watch the cloud spread. The Observable window plots $\\mathbb{E}|X_t|^2$ over time; use the early part, before particles leave the dashed box.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "0", "sigma": 1 },
+    "analysis": { "observable": "x^2 + y^2" }
+  },
+  "particles": [{ "kind": "point", "x": 0, "y": 0, "n": 500 }],
+  "box": { "x0": -10, "y0": -7, "x1": 10, "y1": 7 },
+  "view": { "x": 0, "y": 0, "scale": 40 },
+  "panels": ["observable", "settings"],
+  "questions": [
+    { "text": "How does $\\mathbb{E}|X_t|^2$ grow with $t$: like $t$, $\\sqrt{t}$ or $t^2$?", "kind": "choice", "choices": ["like t", "like √t", "like t²"], "answer": "like t" },
+    { "text": "Read off the slope of $\\mathbb{E}|X_t|^2$ against $t$ (σ = 1).", "kind": "number", "answer": 2, "tolerance": 0.3 },
+    { "text": "Set σ = 0.5 and restart. By what factor does the slope change?", "kind": "number", "answer": 0.25, "tolerance": 0.05 },
+    { "text": "So how does the typical distance from the origin grow with $t$? Relate it to the quadratic variation $\\langle W \\rangle_t = t$." }
+  ]
+}
