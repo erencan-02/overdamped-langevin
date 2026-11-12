@@ -297,6 +297,7 @@ src/
   sim/branching.ts    exact sampler for independent birth–death runs
   instruments/        analysis tools behind one interface (ergodicity, first passage, Δt sweep, …)
   scenario/           scenario schema and migrations, link codec, applying and capturing set-ups
+  ui/panelKit.ts      builds every side window (cards, inputs, plots); ui/sideWindows.ts uses it
   ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
 public/scenarios/     the course scenarios (JSON) and their index
   sim/schemes.ts      numerical schemes (Euler–Maruyama, stochastic Heun, Milstein)

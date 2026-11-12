@@ -19,6 +19,7 @@ import { StepSweepInstrument } from './instruments/stepSweep';
 import { ScenarioPanel } from './ui/scenarioPanel';
 import { applyScenario, captureScenario, type ScenarioHost } from './scenario/setup';
 import { Tutorial } from './ui/tutorial';
+import { buildSideWindows } from './ui/sideWindows';
 import { appTutorialSteps } from './ui/tutorialSteps';
 import { initialState, type Mode, type ViewKind } from './state';
 import { type ControlActions, Controls } from './ui/controls';
@@ -56,6 +57,8 @@ import { Camera } from './view/camera';
 import { Overlay } from './view/overlay';
 
 function main(): void {
+  // The side windows first: everything below looks up their elements.
+  buildSideWindows();
   const stage = document.getElementById('stage')!;
   const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
   const overlayCanvas = document.getElementById('overlay') as HTMLCanvasElement;
