@@ -5,6 +5,7 @@ import { Recorder } from '../src/record/recorder';
 import { PotentialField } from '../src/sim/field';
 import { ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
+import { langevin } from '../src/sim/process';
 
 /** Parses a .npy buffer (format 1.0) into header text and raw data bytes. */
 function parseNpy(bytes: Uint8Array) {
@@ -45,7 +46,7 @@ describe('Recorder', () => {
     let now = 1000;
     rec.start(now, { x0: -2, y0: -1, x1: 2, y1: 1 });
     for (let k = 0; k < 5; k++) {
-      ps.advance(field, 0.05, 0.6);
+      ps.advance(langevin(field, 0.6), 0.05);
       now += 60;
       rec.tick(now);
     }

@@ -52,14 +52,16 @@ export class KlPanel {
     const s = this.monitor.latest;
     if (this.monitor.enabled) {
       this.value.textContent = s && Number.isFinite(s.kl) ? formatValue(s.kl) : '—';
-      this.info.textContent = !s
-        ? 'Waiting for particles…'
-        : !Number.isFinite(s.floor)
-          ? 'σ = 0: the Gibbs measure has no density.'
-          : s.inside === 0
-            ? `No particles in the box (${s.total} in total).`
-            : `h = ${s.h.toFixed(2)} · ${s.inside} / ${s.total} in the box · floor ${formatValue(s.floor)}` +
-              (s.kernelCells < 0.75 ? ' · kernel finer than the grid' : '');
+      this.info.textContent = !this.monitor.gibbs
+        ? 'Not available: with a drift u or state-dependent noise the invariant measure is not known in closed form.'
+        : !s
+          ? 'Waiting for particles…'
+          : !Number.isFinite(s.floor)
+            ? 'σ = 0: the Gibbs measure has no density.'
+            : s.inside === 0
+              ? `No particles in the box (${s.total} in total).`
+              : `h = ${s.h.toFixed(2)} · ${s.inside} / ${s.total} in the box · floor ${formatValue(s.floor)}` +
+                (s.kernelCells < 0.75 ? ' · kernel finer than the grid' : '');
     }
     const { times, channels } = this.monitor.series;
     this.plot.draw({ times, values: channels.kl, reference: s?.floor ?? NaN });

@@ -54,6 +54,12 @@ export const DEFAULTS = {
   potential: '\\frac{(x^2 - 4)^2}{16} + \\frac{y^2}{2}',
   /** Test function of the observables window (LaTeX). */
   observable: 'x^2 + y^2',
+  /** Extra drift u = (u₁, u₂) of the drift & noise window (LaTeX): a rotation. */
+  driftU1: '-y',
+  driftU2: 'x',
+  /** Noise coefficients s₁, s₂ of the drift & noise window (LaTeX): diagonal, multiplicative. */
+  noiseS1: '\\sigma\\sqrt{1 + \\frac{x^2}{4}}',
+  noiseS2: '\\sigma\\sqrt{1 + \\frac{y^2}{4}}',
   scale: 64,
 } as const;
 

@@ -8,6 +8,7 @@ import { BooleanField, EnumField, IntegerField, NumberField } from '../src/sessi
 import { Session } from '../src/session/session';
 import { DisplaySettings, PhysicsSettings } from '../src/session/settings';
 import { initialState } from '../src/state';
+import { langevin } from '../src/sim/process';
 
 function setup() {
   const state = initialState();
@@ -60,7 +61,7 @@ describe('Session', () => {
     const a = setup();
     a.field.applyBrush(0.3, -0.2, -2, 0.5);
     for (let i = 0; i < 20; i++) a.ps.add(i * 0.05, 0, i % 12);
-    a.ps.advance(a.field, 0.123, 0.5);
+    a.ps.advance(langevin(a.field, 0.5), 0.123);
     const snap = a.session.capture();
 
     const b = setup();
@@ -69,8 +70,8 @@ describe('Session', () => {
     expect(b.ps.time).toBe(a.ps.time);
     expect(b.field.sample(0.3, -0.2)).toBeCloseTo(a.field.sample(0.3, -0.2), 6);
     // Continuing both gives identical trajectories (same positions, clock and random state).
-    a.ps.advance(a.field, 0.2, 0.5);
-    b.ps.advance(b.field, 0.2, 0.5);
+    a.ps.advance(langevin(a.field, 0.5), 0.2);
+    b.ps.advance(langevin(b.field, 0.5), 0.2);
     for (let i = 0; i < 20; i++) expect(b.ps.x[i]).toBe(a.ps.x[i]);
   });
 

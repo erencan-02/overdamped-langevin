@@ -1,6 +1,6 @@
 import type { CompiledPotential } from '../analysis/latex';
 import { PotentialField } from './field';
-import type { DriftField } from './schemes';
+import type { DriftField } from './process';
 
 /** Ψ as the analysis code sees it: values at points, and counters that change when Ψ changes. */
 export interface PotentialSampler {

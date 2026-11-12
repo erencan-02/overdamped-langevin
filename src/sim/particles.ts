@@ -1,5 +1,6 @@
 import { Rng } from './rng';
-import { DEFAULT_SCHEME, type DriftField, SCHEMES, type Scheme } from './schemes';
+import type { Process } from './process';
+import { DEFAULT_SCHEME, SCHEMES, type Scheme } from './schemes';
 
 export const MAX_PARTICLES = 2000;
 /** Number of stored trail points per particle. */
@@ -42,7 +43,8 @@ export interface ParticleEdit {
 }
 
 /**
- * Ensemble of independent particles following the overdamped Langevin SDE
+ * Ensemble of independent particles following an SDE in ℝ² (a `Process`, see process.ts), by
+ * default the overdamped Langevin equation
  *
  *     dX_t = −∇Ψ(X_t) dt + σ dW_t ,   X_t ∈ ℝ²
  *
@@ -287,9 +289,8 @@ export class ParticleSystem {
    * real time) rather than taking larger steps. Returns the simulated time actually advanced.
    */
   advance(
-    field: DriftField,
+    process: Process,
     T: number,
-    sigma: number,
     dt = DEFAULT_DT_MAX,
     workBudget = Infinity,
   ): number {
@@ -309,7 +310,7 @@ export class ParticleSystem {
     }
     const t0 = this.time;
     for (let s = 0; s < n; s++) {
-      this.stepAt(field, dt, sigma, t0 + s * dt);
+      this.stepAt(process, dt, t0 + s * dt);
       this.events?.afterStep(this, t0 + (s + 1) * dt);
       this.trailClock += dt;
       if (this.trailClock >= TRAIL_DT - 1e-12) {
@@ -333,13 +334,13 @@ export class ParticleSystem {
   }
 
   /** One step of size dt for every particle, using the current scheme (does not advance `time`). */
-  step(field: DriftField, dt: number, sigma: number): void {
-    this.stepAt(field, dt, sigma, this.time);
+  step(process: Process, dt: number): void {
+    this.stepAt(process, dt, this.time);
   }
 
   /** One step of size dt starting at time t (the drift may depend on time). */
-  private stepAt(field: DriftField, dt: number, sigma: number, t: number): void {
-    this.scheme.step(this, field, dt, sigma, this.rng, t);
+  private stepAt(process: Process, dt: number, t: number): void {
+    this.scheme.step(this, process, dt, this.rng, t);
     this.version++;
   }
 

@@ -106,7 +106,9 @@ export class ObservablePanel {
       } else if (s.inside === 0) {
         this.info.textContent = `No particles in the box (${s.total} in total)${undef}.`;
       } else {
-        const exact = Number.isFinite(s.exact)
+        const exact = !this.monitor.gibbs
+          ? 'no closed-form π for this process'
+          : Number.isFinite(s.exact)
           ? `∫f dπ ${s.exactStale ? '≈' : '='} ${formatValue(s.exact)}${s.exactStale ? ' (updating)' : ''}`
           : this.monitor.sigmaIsZero
             ? 'σ = 0: π has no density'

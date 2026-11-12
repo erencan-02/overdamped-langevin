@@ -57,6 +57,12 @@ export class EquilibriumMonitor {
   enabled = true;
   /** Keep estimating even while the window is closed (recording, density shown). */
   keepRunning = false;
+  /**
+   * The process is an overdamped Langevin equation, so the Gibbs measure is its invariant
+   * measure (see ProcessCapabilities). Otherwise only the smoothed empirical measure is
+   * estimated (for the density view) and KL is NaN.
+   */
+  gibbs = true;
   box: Box | null = null;
   /** KL over simulated time. */
   readonly series = new TimeSeries(['kl'] as const);
@@ -134,7 +140,7 @@ export class EquilibriumMonitor {
     if (nowMs - this.lastRun < intervalMs) return false;
     const field = this.field;
     const ps = this.particles;
-    const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${kernelVariance}`;
+    const inputs = `${ps.version}|${field.revision}|${field.epoch}|${sigma}|${kernelVariance}|${this.gibbs}`;
     if (inputs === this.lastInputs) return false;
     this.lastRun = nowMs;
     this.lastInputs = inputs;
@@ -142,7 +148,7 @@ export class EquilibriumMonitor {
     const h = Math.sqrt(kernelVariance);
     const grid = this.ensureGrid(h);
     const n = grid.nx * grid.ny;
-    const logQ = this.ensureGibbs(grid, sigma);
+    const logQ = this.gibbs ? this.ensureGibbs(grid, sigma) : null;
 
     if (this.mass.length < n) this.mass = new Float32Array(n);
     const mass = this.mass;

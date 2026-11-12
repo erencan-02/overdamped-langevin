@@ -153,6 +153,66 @@
         </div>
       </section>
 
+      <!-- Drift and noise: the Langevin equation, or a general SDE with diagonal noise -->
+      <section class="analysis card collapsed" id="process" aria-label="Drift and noise">
+        <button class="analysis-head" id="process-toggle" type="button" aria-expanded="false" aria-controls="process-body">
+          <span class="analysis-title">Drift &amp; noise</span>
+          <output id="process-kind"></output>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+        <div class="analysis-body" id="process-body" hidden>
+          <div class="process-eq tex" data-tex="dX_t = \bigl(-\nabla\Psi + u\bigr)(t, X_t)\,dt + \operatorname{diag}(s_1, s_2)(t, X_t)\,dW_t">dX = (−∇Ψ + u) dt + diag(s₁, s₂) dW</div>
+          <label class="switch-row">
+            <input type="checkbox" id="proc-drift" />
+            <span class="switch" aria-hidden="true"></span>
+            <span>Add a drift u(t, x, y)</span>
+          </label>
+          <div class="field obs-field" id="proc-u1-field">
+            <label class="field-head" for="proc-u1"><span>u₁(t, x, y)</span><span class="field-note">LaTeX</span></label>
+            <input type="text" id="proc-u1" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="proc-u1-error" />
+            <div class="obs-error" id="proc-u1-error" role="alert" hidden></div>
+            <div class="obs-preview" aria-hidden="true"></div>
+          </div>
+          <div class="field obs-field" id="proc-u2-field">
+            <label class="field-head" for="proc-u2"><span>u₂(t, x, y)</span></label>
+            <input type="text" id="proc-u2" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="proc-u2-error" />
+            <div class="obs-error" id="proc-u2-error" role="alert" hidden></div>
+            <div class="obs-preview" aria-hidden="true"></div>
+          </div>
+          <div class="obs-examples" role="group" aria-label="Example drifts">
+            <button type="button" data-part="drift" data-first="-y" data-second="x">rotation</button>
+            <button type="button" data-part="drift" data-first="y" data-second="0">shear</button>
+            <button type="button" data-part="drift" data-first="1" data-second="0">constant</button>
+            <button type="button" data-part="drift" data-first="-y\cos t" data-second="x\cos t">rotation (t)</button>
+          </div>
+          <label class="switch-row">
+            <input type="checkbox" id="proc-noise" />
+            <span class="switch" aria-hidden="true"></span>
+            <span>State-dependent noise s(t, x, y)</span>
+          </label>
+          <div class="field obs-field" id="proc-s1-field">
+            <label class="field-head" for="proc-s1"><span>s₁(t, x, y)</span><span class="field-note">LaTeX</span></label>
+            <input type="text" id="proc-s1" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="proc-s1-error" />
+            <div class="obs-error" id="proc-s1-error" role="alert" hidden></div>
+            <div class="obs-preview" aria-hidden="true"></div>
+          </div>
+          <div class="field obs-field" id="proc-s2-field">
+            <label class="field-head" for="proc-s2"><span>s₂(t, x, y)</span></label>
+            <input type="text" id="proc-s2" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="proc-s2-error" />
+            <div class="obs-error" id="proc-s2-error" role="alert" hidden></div>
+            <div class="obs-preview" aria-hidden="true"></div>
+          </div>
+          <div class="obs-examples" role="group" aria-label="Example noise">
+            <button type="button" data-part="noise" data-first="\sigma\sqrt{1 + \frac{x^2}{4}}" data-second="\sigma\sqrt{1 + \frac{y^2}{4}}">multiplicative</button>
+            <button type="button" data-part="noise" data-first="\sigma x" data-second="\sigma y">geometric</button>
+            <button type="button" data-part="noise" data-first="\sigma" data-second="\frac{\sigma}{4}">anisotropic</button>
+            <button type="button" data-part="noise" data-first="\sigma\left(1 + \frac{1}{2}\sin t\right)" data-second="\sigma\left(1 + \frac{1}{2}\sin t\right)">pulsing (t)</button>
+          </div>
+          <div class="field-note">Itô SDE with diagonal noise. Off: u = 0 and s₁ = s₂ = σ (the Langevin equation).</div>
+          <div class="kl-info" id="process-info"></div>
+        </div>
+      </section>
+
       <!-- Births and deaths: every particle has exponential birth and death clocks -->
       <section class="analysis card collapsed" id="birthdeath" aria-label="Birth and death">
         <button class="analysis-head" id="birthdeath-toggle" type="button" aria-expanded="false" aria-controls="birthdeath-body">
@@ -284,8 +344,9 @@
           <div class="field">
             <span class="field-head"><span>Numerical scheme</span><kbd>S</kbd></span>
             <div class="mini-seg" role="radiogroup" aria-label="Numerical scheme">
-              <button role="radio" data-scheme="heun">Heun</button>
-              <button role="radio" data-scheme="euler-maruyama">Euler–Maruyama</button>
+              <button role="radio" data-scheme="heun" title="Stochastic Heun">Heun</button>
+              <button role="radio" data-scheme="euler-maruyama" title="Euler–Maruyama">Euler–M.</button>
+              <button role="radio" data-scheme="milstein" title="Milstein">Milstein</button>
             </div>
             <span class="field-note" id="scheme-note"></span>
           </div>
@@ -627,7 +688,7 @@
               <li><kbd>I</kbd> Image → Ψ · <kbd>⇧</kbd><kbd>I</kbd> Image → particles</li>
               <li><kbd>V</kbd> Live camera as Ψ · <kbd>O</kbd> Open recording</li>
               <li><kbd>D</kbd> Show <span class="tex" data-tex="\hat{\rho}_h"><math><msub><mover accent="true"><mi>ρ</mi><mo>^</mo></mover><mi>h</mi></msub></math></span> · <kbd>⇧</kbd><kbd>R</kbd> Record</li>
-              <li><kbd>S</kbd> Switch numerical scheme</li>
+              <li><kbd>S</kbd> Next numerical scheme (Heun, Euler–Maruyama, Milstein)</li>
               <li><kbd>C</kbd> Clear particles · <kbd>X</kbd> Clear Ψ</li>
               <li><kbd>Ctrl</kbd><kbd>Z</kbd> Undo · <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Z</kbd> or <kbd>Ctrl</kbd><kbd>Y</kbd> Redo (Ψ edits, added and removed particles)</li>
               <li><kbd>R</kbd> Reset view · <kbd>?</kbd> Help</li>

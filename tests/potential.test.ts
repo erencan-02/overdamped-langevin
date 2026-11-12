@@ -8,6 +8,7 @@ import { ParticleSystem } from '../src/sim/particles';
 import { Potential } from '../src/sim/potential';
 import { Rng } from '../src/sim/rng';
 import { type DriftField, SCHEMES } from '../src/sim/schemes';
+import { langevin } from '../src/sim/process';
 
 let parser: TexParser;
 beforeAll(async () => {
@@ -45,8 +46,8 @@ describe('batched drift in the schemes', () => {
       const a = new ParticleSystem(new Rng(11), scheme);
       const b = new ParticleSystem(new Rng(11), scheme);
       for (const ps of [a, b]) for (let i = 0; i < 50; i++) ps.add(Math.cos(i), Math.sin(2 * i), 0);
-      a.advance(single, 0.5, 0.7);
-      b.advance(batch, 0.5, 0.7);
+      a.advance(langevin(single, 0.7), 0.5);
+      b.advance(langevin(batch, 0.7), 0.5);
       for (let i = 0; i < 50; i++) {
         expect(b.x[i]).toBe(a.x[i]);
         expect(b.y[i]).toBe(a.y[i]);
@@ -62,7 +63,7 @@ describe('formula potentials in the simulation', () => {
     expect(p.timeDependent).toBe(true);
     const ps = new ParticleSystem(new Rng(1));
     ps.add(2, 0, 0);
-    ps.advance(p.drift, Math.PI / 2, 0); // deterministic: it follows the well closely
+    ps.advance(langevin(p.drift, 0), Math.PI / 2); // deterministic: it follows the well closely
     expect(ps.time).toBeCloseTo(Math.PI / 2, 2);
     const cx = 2 * Math.cos(ps.time);
     const cy = 2 * Math.sin(ps.time);
@@ -76,7 +77,7 @@ describe('formula potentials in the simulation', () => {
     const p = formulaPotential('\\frac{x^2 + y^2}{2}');
     const ps = new ParticleSystem(new Rng(5));
     for (let i = 0; i < 2000; i++) ps.add(4, -4, 0); // Ψ = 16 > cap: the drift is still exact
-    ps.advance(p.drift, 8, 1);
+    ps.advance(langevin(p.drift, 1), 8);
     let m2 = 0;
     for (let i = 0; i < ps.count; i++) m2 += ps.x[i] ** 2 + ps.y[i] ** 2;
     const variance = m2 / (2 * ps.count);
@@ -122,10 +123,10 @@ describe('recordings with a formula potential', () => {
       params: () => ({ sigma: 0.6, speed: 1, kernelVariance: 0.09, scheme: 'heun', seed: 0, playing: true, potentialTex: tex }),
     });
     rec.start(0, { x0: -1, y0: -1, x1: 1, y1: 1 });
-    ps.advance(field, 0.1, 0.6);
+    ps.advance(langevin(field, 0.6), 0.1);
     rec.tick(100);
     tex = null; // back to the painted lattice
-    ps.advance(field, 0.1, 0.6);
+    ps.advance(langevin(field, 0.6), 0.1);
     rec.tick(200);
     const run = rec.stop(300)!;
     const t = new RecordingTimeline(await readNpz(await run.toNpz()));

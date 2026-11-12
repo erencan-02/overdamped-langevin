@@ -41,6 +41,8 @@ export interface CompiledPotential {
   readonly timeDependent: boolean;
   /** Ψ depends on σ. */
   readonly usesSigma: boolean;
+  /** The symbols it depends on (of x, y, r, theta, t, sigma). */
+  readonly variables: ReadonlySet<string>;
   /**
    * Ψ as GLSL ES 3.0 (an expression in x, y, r, theta, t, sigma, plus helper functions), so the
    * pictures can evaluate it on the GPU; null if the formula has no GLSL form. Not trusted by
@@ -68,6 +70,11 @@ export interface TexParser {
   parse(tex: string): ParseResult;
   /** A potential Ψ(t, x, y), differentiated symbolically. */
   parsePotential(tex: string): PotentialParseResult;
+  /**
+   * A coefficient of the SDE, a function of (t, x, y) and σ with its exact gradient, named
+   * "u_1", "u_2" (extra drift) or "s_1", "s_2" (noise) in the input and in messages.
+   */
+  parseCoefficient(tex: string, name: 'u_1' | 'u_2' | 's_1' | 's_2'): PotentialParseResult;
 }
 
 const SCALAR = 'Output must be a scalar';
@@ -125,6 +132,7 @@ export function loadTexParser(): Promise<TexParser> {
     return {
       parse: (tex: string) => guard(() => buildObservable(ce, compile, tex)),
       parsePotential: (tex: string) => guard(() => buildPotential(ce, compile, tex)),
+      parseCoefficient: (tex: string, name: string) => guard(() => buildPotential(ce, compile, tex, coefficientSpec(name))),
     };
   });
   return loading;
@@ -167,19 +175,48 @@ function buildObservable(ce: Engine, compile: Compile, src: string): ParseResult
 
 // ------------------------------------------------------------------ potentials
 
-function buildPotential(ce: Engine, compile: Compile, src: string): PotentialParseResult {
-  // An optional "\Psi(t, x, y) =", "\Psi(x, y) =" or "\Psi =" in front.
+/** How a function of (t, x, y) is named in the input and in messages. */
+interface FunctionSpec {
+  /** LaTeX of its name, e.g. "\\Psi" or "s_1". */
+  name: string;
+  /** Matches the name itself in the input (an optional "name(t, x, y) =" prefix is removed). */
+  pattern: string;
+  /** Message for an empty input. */
+  empty: string;
+}
+
+const PSI_SPEC: FunctionSpec = {
+  name: '\\Psi',
+  pattern: '\\\\Psi',
+  empty: 'Enter a potential, e.g. \\frac{x^2 + y^2}{2}.',
+};
+
+/** A coefficient of the SDE: u_1, u_2 (extra drift) or s_1, s_2 (noise), given by its name. */
+function coefficientSpec(name: string): FunctionSpec {
+  const m = /^([a-z])_([12])$/.exec(name);
+  if (!m) throw new Error(`Unsupported coefficient name ${name}`);
+  return {
+    name,
+    pattern: `${m[1]}_\\{?${m[2]}\\}?`,
+    empty: `Enter ${name}(t, x, y), e.g. ${m[1] === 's' ? '\\sigma' : '-y'}.`,
+  };
+}
+
+function buildPotential(ce: Engine, compile: Compile, src: string, spec: FunctionSpec = PSI_SPEC): PotentialParseResult {
+  // An optional "name(t, x, y) =", "name(x, y) =" or "name =" in front.
   const tex = src
     .trim()
-    .replace(/^\\Psi\s*(?:\\left\s*)?\(\s*(?:t\s*,\s*)?x\s*,\s*y\s*(?:\\right\s*)?\)\s*=/, '')
-    .replace(/^\\Psi\s*=/, '');
-  if (/\\Psi/.test(tex)) throw new TexError('\\Psi cannot appear in its own formula.');
+    .replace(new RegExp(`^${spec.pattern}\\s*(?:\\\\left\\s*)?\\(\\s*(?:t\\s*,\\s*)?x\\s*,\\s*y\\s*(?:\\\\right\\s*)?\\)\\s*=`), '')
+    .replace(new RegExp(`^${spec.pattern}\\s*=`), '');
+  if (/\\Psi/.test(tex)) {
+    throw new TexError(spec === PSI_SPEC ? '\\Psi cannot appear in its own formula.' : `${spec.name} cannot depend on \\Psi.`);
+  }
   const expr = readFormula(ce, tex, {
     allowed: POTENTIAL_SYMBOLS,
     definitions: [],
-    name: '\\Psi',
-    hint: '\\Psi may depend on x, y, t (and r, \\theta, \\sigma)',
-    empty: 'Enter a potential, e.g. \\frac{x^2 + y^2}{2}.',
+    name: spec.name,
+    hint: `${spec.name} may depend on x, y, t (and r, \\theta, \\sigma)`,
+    empty: spec.empty,
   });
   const psi = compileChecked(compile, expr);
 
@@ -191,7 +228,7 @@ function buildPotential(ce: Engine, compile: Compile, src: string): PotentialPar
   for (const v of spatial) {
     const dv = ce.box(['D', expr.json, v] as Parameters<Engine['box']>[0]).evaluate();
     if (!dv.isValid || hasHead(dv.json, UNRESOLVED_DERIVATIVE)) {
-      throw new TexError('\\Psi must be differentiable: the gradient of this formula could not be derived.');
+      throw new TexError(`${spec.name} must be differentiable: the gradient of this formula could not be derived.`);
     }
     d[v] = compileChecked(compile, dv);
   }
@@ -219,6 +256,7 @@ function buildPotential(ce: Engine, compile: Compile, src: string): PotentialPar
 
   const potential: CompiledPotential = {
     glsl,
+    variables: new Set([...psi.uses].filter((v) => POTENTIAL_SYMBOLS.has(v))),
     timeDependent: psi.uses.has('t'),
     usesSigma: psi.uses.has('sigma'),
     value(xs, ys, n, t, sigma, out) {
@@ -256,7 +294,7 @@ function buildPotential(ce: Engine, compile: Compile, src: string): PotentialPar
       }
     },
   };
-  checkGradient(potential);
+  checkGradient(potential, spec.name);
   return { ok: true, potential };
 }
 
@@ -264,7 +302,7 @@ function buildPotential(ce: Engine, compile: Compile, src: string): PotentialPar
  * Compares the assembled gradient with central differences of Ψ at the check points, which
  * catches a wrong derivative as well as a wrong chain rule.
  */
-function checkGradient(p: CompiledPotential): void {
+function checkGradient(p: CompiledPotential, name: string): void {
   const n = CHECK_POINTS.length;
   const xs = Float64Array.from(CHECK_POINTS, (q) => q[0]);
   const ys = Float64Array.from(CHECK_POINTS, (q) => q[1]);
@@ -296,7 +334,7 @@ function checkGradient(p: CompiledPotential): void {
     if (!Number.isFinite(fdx) || !Number.isFinite(fdy)) continue; // undefined there (e.g. √x at x < 0)
     const scale = 1 + Math.abs(fdx) + Math.abs(fdy);
     if (!(Math.abs(gx[i] - fdx) <= 1e-4 * scale && Math.abs(gy[i] - fdy) <= 1e-4 * scale)) {
-      throw new TexError('\\Psi must be differentiable: its derived gradient does not match the formula.');
+      throw new TexError(`${name} must be differentiable: its derived gradient does not match the formula.`);
     }
   }
 }

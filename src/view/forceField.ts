@@ -1,4 +1,4 @@
-import type { DriftField } from '../sim/schemes';
+import type { DriftField } from '../sim/process';
 
 /**
  * Floats per arrow: world x, world y, unit direction x, y, length (as a fraction of the lattice

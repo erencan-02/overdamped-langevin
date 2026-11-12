@@ -48,6 +48,14 @@ export interface AppState {
   deathRate: number;
   /** Test function f(x, y) of the observables window, in LaTeX (always a valid expression). */
   observable: string;
+  /** Add the drift u = (u₁, u₂) to −∇Ψ (formulas in LaTeX, checked by the drift & noise window). */
+  extraDrift: boolean;
+  driftU1: string;
+  driftU2: string;
+  /** Noise diag(s₁, s₂) given by formulas instead of σ. */
+  noiseFormula: boolean;
+  noiseS1: string;
+  noiseS2: string;
 }
 
 export function initialState(): AppState {
@@ -75,5 +83,11 @@ export function initialState(): AppState {
     birthRate: DEFAULTS.birthRate,
     deathRate: DEFAULTS.deathRate,
     observable: DEFAULTS.observable,
+    extraDrift: false,
+    driftU1: DEFAULTS.driftU1,
+    driftU2: DEFAULTS.driftU2,
+    noiseFormula: false,
+    noiseS1: DEFAULTS.noiseS1,
+    noiseS2: DEFAULTS.noiseS2,
   };
 }
