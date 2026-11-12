@@ -59,6 +59,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
 | Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
+| Offline / install | After the first visit the whole app works **without internet**, including the 3D view, formulas and the course scenarios (only opening a GitHub Gist needs a network). The browser offers to **install** it as an app (address bar icon, or *Add to Home Screen* on phones). A new version is announced with a *Reload* button, never loaded in the middle of a session |
 
 The panel at the bottom left sets the diffusivity σ, the simulation speed, the numerical scheme and the brush size
 (standard deviation of the Gaussian brush) and strength (rate of change of Ψ at the brush centre).
@@ -298,7 +299,7 @@ noise it measures the strong orders on geometric Brownian motion against the exa
 npm install
 npm run dev      # local dev server
 npm test         # unit and statistical tests
-npm run e2e      # end-to-end smoke tests in the installed Chrome (Playwright)
+npm run e2e      # end-to-end tests in the installed Chrome (Playwright): dev server and production build
 npm run build    # static build in dist/
 ```
 
@@ -323,6 +324,7 @@ src/
     files.ts            images, recordings, scenarios from files and drag and drop
     scenarios.ts        the Scenario window and the tutorial
     keyboard.ts         the shortcuts as one table (also the list in the help)
+    offline.ts          the service worker of the offline app (built by vite-plugin-pwa)
     loop.ts             the frame loop: input, simulate, derive, analyse, draw, readout
   sim/field.ts        chunked potential grid, brush, gradient
   sim/particles.ts    particle ensemble: state, sub-stepping, trails

@@ -11,6 +11,7 @@ import { createStepKey, installKeyboard } from './app/keyboard';
 import { Layout, setUpEmbedding } from './app/layout';
 import { createLiveCamera } from './app/liveCamera';
 import { Loop } from './app/loop';
+import { setUpOffline } from './app/offline';
 import { Recording } from './app/recording';
 import { createTutorial, Scenarios } from './app/scenarios';
 import { createSession } from './app/session';
@@ -52,6 +53,7 @@ function main(): void {
 
   // A scenario named in the address (#s=…, #scenario=…, #gist=…) is opened at start.
   void app.scenarios.panel.loadFromHash();
+  setUpOffline(app);
 
   exposeForDebugging(app);
 }
