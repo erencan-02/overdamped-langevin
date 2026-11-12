@@ -16,6 +16,7 @@ import { Recording } from './app/recording';
 import { createTutorial, Scenarios } from './app/scenarios';
 import { createSession } from './app/session';
 import { createStage } from './app/stage';
+import { SceneExport } from './export/sceneExport';
 import { mountHelp } from './ui/help';
 import { buildSideWindows } from './ui/sideWindows';
 
@@ -46,6 +47,10 @@ function main(): void {
   app.scenarios = new Scenarios(app);
   app.tutorial = createTutorial(app);
   app.stepKey = createStepKey(app);
+  app.exporter = new SceneExport({
+    toast: (text) => app.controls.showToast(text),
+    changed: (recording) => showVideoRecording(recording),
+  });
   installKeyboard(app);
 
   app.layout.start();
@@ -56,6 +61,18 @@ function main(): void {
   setUpOffline(app);
 
   exposeForDebugging(app);
+}
+
+/** While a video is recorded, its menu entries stop it. */
+function showVideoRecording(recording: boolean): void {
+  const labels: Record<string, [string, string]> = {
+    'record-mp4': ['Record video (MP4)', 'Stop the recording'],
+    'record-gif': ['Record GIF', 'Stop the recording'],
+  };
+  for (const [action, [idle, busy]] of Object.entries(labels)) {
+    const b = document.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+    if (b) b.textContent = recording ? busy : idle;
+  }
 }
 
 /** `window.sde` in the browser console (also used by the end-to-end tests). */

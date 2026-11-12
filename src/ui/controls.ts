@@ -35,6 +35,10 @@ export interface ControlActions {
   redo(): void;
   resetView(): void;
   importImage(target: 'potential' | 'particles'): void;
+  /** Saves the scene as a PNG. */
+  savePicture(): void;
+  /** Starts a video recording of the scene (MP4 or GIF), or stops the one running. */
+  recordVideo(format: 'mp4' | 'gif'): void;
   preset(name: string): void;
 }
 
@@ -119,6 +123,9 @@ export class Controls {
       else if (b.dataset.action === 'open-recording') actions.openRecording();
       else if (b.dataset.action === 'share') actions.share();
       else if (b.dataset.action === 'open-full') actions.openFull();
+      else if (b.dataset.action === 'save-picture') actions.savePicture();
+      else if (b.dataset.action === 'record-mp4') actions.recordVideo('mp4');
+      else if (b.dataset.action === 'record-gif') actions.recordVideo('gif');
       this.setMenu(false);
     });
     document.addEventListener('pointerdown', (e) => {

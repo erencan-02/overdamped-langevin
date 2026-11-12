@@ -3,6 +3,7 @@ import type { ObservableMonitor } from '../analysis/observable';
 import { byId, CollapsiblePanel, formatValue } from './collapsiblePanel';
 import { FormulaInput } from './formulaInput';
 import { TimeSeriesPlot } from './timeSeriesPlot';
+import { texToText } from '../export/texText';
 
 /**
  * The observables window: a LaTeX input for a test function f(x, y) (FormulaInput: validated as
@@ -15,7 +16,16 @@ import { TimeSeriesPlot } from './timeSeriesPlot';
 export class ObservablePanel {
   private readonly value = byId('obs-value');
   private readonly info = byId('obs-info');
-  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('obs-plot'), 'linear');
+  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('obs-plot'), 'linear', () => ({
+    title: `Observable E[f(Xₜ)], f = ${texToText(this.actions.expression())}`,
+    xLabel: 'simulated time t',
+    yLabel: 'E[f(Xₜ) | Xₜ ∈ B]',
+    legend: [
+      { kind: 'line', label: 'particle mean' },
+      { kind: 'band', label: '95 % confidence interval' },
+      { kind: 'dash', label: 'exact ∫ f dπ' },
+    ],
+  }));
   private readonly panel: CollapsiblePanel;
   private readonly formula: FormulaInput;
   private parser: TexParser | null = null;

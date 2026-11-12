@@ -6,6 +6,7 @@ import { CollapsiblePanel, formatOrDash as fmt } from '../ui/collapsiblePanel';
 import { FormulaInput } from '../ui/formulaInput';
 import * as kit from '../ui/panelKit';
 import { TimeSeriesPlot } from '../ui/timeSeriesPlot';
+import { texToText } from '../export/texText';
 import type { FrameContext, Instrument } from './instrument';
 
 /** The ensemble mean is sampled at most this often (real time). */
@@ -72,7 +73,15 @@ export class ErgodicityInstrument implements Instrument {
     });
     kit.caption(parts.body, 'Time average of f along the ringed particle against the mean over all particles');
     const canvas = kit.plotCanvas(parts.body, 'Time average and ensemble mean over time');
-    this.plot = new TimeSeriesPlot(canvas, 'linear');
+    this.plot = new TimeSeriesPlot(canvas, 'linear', () => ({
+      title: `Ergodicity, f = ${texToText(this.actions.expression())}`,
+      xLabel: 'simulated time t',
+      yLabel: 'f',
+      legend: [
+        { kind: 'line', label: 'time average (1/t) ∫₀ᵗ f(Xₛ) ds of one particle' },
+        { kind: 'dash', label: 'ensemble mean over all particles' },
+      ],
+    }));
     kit.legend(parts.body, [
       ['line', 'time average (1/t)∫f(X_s)ds'],
       ['dash', 'ensemble mean'],

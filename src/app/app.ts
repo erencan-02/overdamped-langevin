@@ -5,6 +5,7 @@ import type { Tutorial } from '../ui/tutorial';
 import type { ViewSwitch } from '../view3d/viewSwitch';
 import type { Session } from '../session/session';
 import type { LiveCamera } from '../image/liveCamera';
+import type { SceneExport } from '../export/sceneExport';
 import type { Analysis } from './analysis';
 import type { Core } from './core';
 import type { DriftArrows } from './driftArrows';
@@ -59,4 +60,6 @@ export interface App {
   tutorial: Tutorial;
   /** → steps (keyboard.ts). */
   stepKey: StepKey;
+  /** Pictures and videos of the scene (export/sceneExport.ts, created in main.ts). */
+  exporter: SceneExport;
 }

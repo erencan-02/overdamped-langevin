@@ -10,6 +10,12 @@ export function downloadBlob(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Date and time for file names, e.g. 20261112-204512 (local time). */
+export function timestamp(d: Date = new Date()): string {
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 /** A file name made from free text (letters, digits and dashes). */
 export function safeFileName(text: string, fallback: string): string {
   const s = text

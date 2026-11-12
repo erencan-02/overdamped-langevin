@@ -1,5 +1,5 @@
 import type { Recorder, Run } from '../record/recorder';
-import { downloadBlob } from './download';
+import { downloadBlob, timestamp } from './download';
 
 const DOWNLOAD_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11" /><path d="m7 10.5 5 5 5-5" /><path d="M5 19.5h14" /></svg>';
@@ -141,10 +141,7 @@ function describe(run: Run, wallSeconds?: number, limitBytes?: number): string {
 }
 
 function fileName(run: Run): string {
-  const d = run.startedAt;
-  const pad = (v: number) => String(v).padStart(2, '0');
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  return `langevin-dynamics-${run.name.toLowerCase().replace(/\s+/g, '-')}-${stamp}.npz`;
+  return `langevin-dynamics-${run.name.toLowerCase().replace(/\s+/g, '-')}-${timestamp(run.startedAt)}.npz`;
 }
 
 function button(label: string, icon: string): HTMLButtonElement {

@@ -57,7 +57,16 @@ export class StepSweepInstrument implements Instrument {
     this.horizonInput = kit.numberField(row, { id: 'sweep-horizon', label: 'Horizon T', value: 1, min: 0.05, max: 20, step: 0.05 });
     kit.caption(parts.body, 'Error at time T against the step size (log–log)');
     const canvas = kit.plotCanvas(parts.body, 'Strong and weak errors against the step size');
-    this.plot = new LogLogPlot(canvas);
+    this.plot = new LogLogPlot(canvas, () => ({
+      title: 'Convergence of the numerical schemes',
+      xLabel: 'step size Δt',
+      yLabel: 'error at time T',
+      legend: [
+        ...SCHEME_ORDER.map((id) => ({ kind: 'line' as const, label: SCHEMES[id].name, color: COLORS[id] })),
+        { kind: 'line', label: 'strong E|X − X_ref|', color: '#0f172a' },
+        { kind: 'dash', label: 'weak |E|X|² − E|X_ref|²|', color: '#0f172a' },
+      ],
+    }));
     kit.legend(parts.body, [
       ...SCHEME_ORDER.map((id) => [COLORS[id], SCHEMES[id].short] as const),
       ['line', 'strong E|X − X_ref|'],

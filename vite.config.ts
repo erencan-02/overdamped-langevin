@@ -8,6 +8,11 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
   },
+  // Libraries first used later (export, the GIF worker) are prepared when the dev server starts,
+  // so it does not reload the page when they are first needed.
+  optimizeDeps: {
+    include: ['gifenc', 'mediabunny', 'svgcanvas'],
+  },
   plugins: [
     // Offline app: a service worker (Workbox) keeps every file of the build, so the app, its
     // lazily loaded parts (formula engine, 3D view, KaTeX) and the course scenarios work without

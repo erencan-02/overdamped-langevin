@@ -28,7 +28,16 @@ export class BirthDeathPanel implements Instrument {
   private readonly value = byId('bd-value');
   private readonly info = byId('bd-info');
   private readonly toggle = byId<HTMLInputElement>('bd-enabled');
-  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('bd-plot'), 'linear');
+  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('bd-plot'), 'linear', () => ({
+    title: 'Births and deaths: number of particles',
+    xLabel: 'simulated time t',
+    yLabel: 'N(t)',
+    legend: [
+      { kind: 'line', label: 'particles N(t)' },
+      { kind: 'dash', label: 'expected N₀ e^((λ−μ)t)' },
+      { kind: 'band', label: '5–95 % of 200 independent runs' },
+    ],
+  }));
   private readonly panel: CollapsiblePanel;
   private readonly birth: FormulaInput;
   private readonly death: FormulaInput;

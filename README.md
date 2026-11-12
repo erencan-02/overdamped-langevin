@@ -59,6 +59,8 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Seed | *Seed* field in the panel (default 0): same seed + same actions = identical run |
 | Replay a recording | **Drop an `.npz`** recording anywhere, or Scene menu → *Open recording* (<kbd>O</kbd>) |
 | Presets, clear, reset view | Scene menu (layers icon), <kbd>C</kbd> clear particles, <kbd>X</kbd> clear Ψ, <kbd>R</kbd> reset view |
+| Export a plot | The small download button on any plot (shown on hover): **PNG** (2400 × 1500 px) or **SVG** (vector), with a title, axis titles and a legend, for papers and lecture notes |
+| Picture / video of the scene | Scene menu → *Save picture (PNG)* at screen resolution, *Record video (MP4)* (H.264 via WebCodecs, up to 1920 × 1080 at 30 fps; WebM/VP9 where H.264 cannot be encoded; at most 3 min) or *Record GIF* (up to 640 px at 12 fps, 30 s). The chip at the top shows the time; *Stop* saves the file |
 | Offline / install | After the first visit the whole app works **without internet**, including the 3D view, formulas and the course scenarios (only opening a GitHub Gist needs a network). The browser offers to **install** it as an app (address bar icon, or *Add to Home Screen* on phones). A new version is announced with a *Reload* button, never loaded in the middle of a session |
 
 The panel at the bottom left sets the diffusivity σ, the simulation speed, the numerical scheme and the brush size
@@ -340,6 +342,8 @@ src/
   ui/                 pointer input and DOM controls
   ui/panelKit.ts      builds every side window (cards, inputs, plots); ui/sideWindows.ts uses it
   ui/help.html        the help dialog (inserted at start by ui/help.ts)
+  ui/plotDraw.ts      drawing of all plots (on screen and for export)
+  export/             figure export (PNG/SVG), pictures and videos of the scene (MP4, GIF)
   ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
 public/scenarios/     the course scenarios (JSON) and their index
 tests/                unit and statistical tests (Vitest)

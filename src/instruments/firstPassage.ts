@@ -6,6 +6,7 @@ import { CollapsiblePanel, formatOrDash as fmt } from '../ui/collapsiblePanel';
 import { FormulaInput } from '../ui/formulaInput';
 import * as kit from '../ui/panelKit';
 import { TimeSeriesPlot } from '../ui/timeSeriesPlot';
+import { texToText } from '../export/texText';
 import { type Rect, type RegionImage, RegionRaster } from '../view/regionRaster';
 import type { FrameContext, Instrument } from './instrument';
 
@@ -84,7 +85,12 @@ export class FirstPassageInstrument implements Instrument {
     kit.note(parts.body, 'A is shaded on the scene while this window is open.');
     kit.caption(parts.body, 'Fraction of the particles that have reached A, over simulated time');
     const canvas = kit.plotCanvas(parts.body, 'Fraction arrived over time');
-    this.plot = new TimeSeriesPlot(canvas, 'linear');
+    this.plot = new TimeSeriesPlot(canvas, 'linear', () => ({
+      title: `First passage into A = {g > 0}, g = ${texToText(this.actions.expression())}`,
+      xLabel: 'simulated time t',
+      yLabel: 'P(τ_A ≤ t)',
+      legend: [{ kind: 'line', label: 'fraction arrived (Kaplan–Meier)' }],
+    }));
     kit.legend(parts.body, [['line', 'P(τ_A ≤ t), Kaplan–Meier']]);
     this.infoLine = kit.info(parts.body);
     const [restart] = kit.buttons(parts.body, ['Start again from now']);

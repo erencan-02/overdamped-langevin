@@ -43,6 +43,9 @@ export class Loop {
     this.updateDerived(now);
     this.analyse(now);
     this.draw(now);
+    // Pictures and video frames are taken right after drawing (WebGL keeps the picture only
+    // until the frame is shown).
+    this.app.exporter.frame(now);
     this.updateReadout();
   }
 

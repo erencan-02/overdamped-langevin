@@ -3,6 +3,7 @@ import { SCHEMES, type SchemeId } from '../sim/schemes';
 import type { Mode, ViewKind } from '../state';
 import { type ControlActions, Controls } from '../ui/controls';
 import { fullAppUrl } from '../ui/embed';
+import { setNotifier } from '../ui/notify';
 import type { App } from './app';
 
 /**
@@ -114,6 +115,12 @@ export function createActions(app: App): ControlActions {
     tutorial() {
       app.tutorial.start();
     },
+    savePicture() {
+      app.exporter.savePicture();
+    },
+    recordVideo(format) {
+      void app.exporter.toggle(format);
+    },
     openFull() {
       window.open(fullAppUrl(), '_blank', 'noopener');
     },
@@ -129,6 +136,7 @@ export function createActions(app: App): ControlActions {
 /** The toolbar, settings, help dialog, toasts and readout, wired to the actions. */
 export function createControls(app: App): Controls {
   const controls = new Controls(app.core.state, app.actions);
+  setNotifier((message) => controls.showToast(message));
   controls.setGpuInfo(app.graphics.gpuInfo.available, app.graphics.tip());
   app.viewSwitch.setGpu(app.core.state.gpu); // no 3D view without the GPU
   return controls;

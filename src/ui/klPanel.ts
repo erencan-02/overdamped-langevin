@@ -12,7 +12,15 @@ import { TimeSeriesPlot } from './timeSeriesPlot';
 export class KlPanel {
   private readonly value = byId('kl-value');
   private readonly info = byId('kl-info');
-  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('kl-plot'), 'log');
+  private readonly plot = new TimeSeriesPlot(byId<HTMLCanvasElement>('kl-plot'), 'log', () => ({
+    title: 'Distance to equilibrium',
+    xLabel: 'simulated time t',
+    yLabel: 'KL(ρ̂ₕ ‖ π) on the box B',
+    legend: [
+      { kind: 'line', label: 'particles ∗ kernel vs Gibbs measure' },
+      { kind: 'dash', label: 'smoothing floor KL(π ∗ Kₕ ‖ π)' },
+    ],
+  }));
   private readonly panel: CollapsiblePanel;
 
   constructor(
