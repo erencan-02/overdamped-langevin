@@ -64,6 +64,9 @@ test('paint, drop particles, simulate, keys, undo', async ({ page }) => {
   expect(await page.evaluate(() => (window as Debug).sde.particles.count)).toBe(1);
   await page.keyboard.press('Control+y');
   expect(await page.evaluate(() => (window as Debug).sde.particles.count)).toBe(n);
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+Shift+Z');
+  expect(await page.evaluate(() => (window as Debug).sde.particles.count)).toBe(n);
 
   // Play (Space) and pause; one step with →.
   await page.keyboard.press(' ');
@@ -194,11 +197,25 @@ test('scenario from the address, 3D view, tutorial and help', async ({ page }) =
   await page.keyboard.press('Escape');
   await expect(page.locator('.tour')).toHaveCount(0);
 
-  // Help dialog.
+  // Help dialog, with the list of shortcuts made from the keyboard table.
   await page.keyboard.press('?');
   await expect(page.locator('#help')).toBeVisible();
+  await expect(page.locator('#help-keys li')).toHaveCount(13);
+  await expect(page.locator('#help-keys')).toContainText('Undo');
+  await expect(page.locator('#help-keys')).toContainText('Image → particles');
   await page.keyboard.press('Escape');
   await expect(page.locator('#help')).toBeHidden();
 
+  expect(errors).toEqual([]);
+});
+
+test('phone with the side windows asked open (?tools=open)', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.setViewportSize({ width: 375, height: 760 });
+  await open(page, '/?tools=open');
+  await expect(page.locator('#left-body')).toBeVisible();
+  // Opening the Scenario window folds the side windows (they would cover each other).
+  await page.locator('#scenario-toggle').click();
+  await expect(page.locator('#left-body')).toBeHidden();
   expect(errors).toEqual([]);
 });
