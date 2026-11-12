@@ -35,7 +35,7 @@ import { PotentialPanel } from './ui/potentialPanel';
 import { BirthDeath } from './sim/birthDeath';
 import { BirthDeathPanel } from './ui/birthDeathPanel';
 import { Potential } from './sim/potential';
-import { Recorder } from './record/recorder';
+import { Recorder, type Run } from './record/recorder';
 import { ImageDropHandler, ImageImporter } from './image/importer';
 import { loadRecording, RecordingDropHandler } from './record/loader';
 import { Playback } from './record/playback';
@@ -241,10 +241,7 @@ function main(): void {
       if (playback.active) return;
       const now = performance.now();
       if (recorder.recording) {
-        const run = recorder.stop(now);
-        controls.setRecording(false);
-        recordings.render();
-        if (run) controls.showToast(`${run.name} saved: ${run.frames} frames`);
+        recordingStopped(recorder.stop(now));
       } else {
         // Ψ is recorded on the KL box (or the view, if there is none) for the whole run.
         recorder.start(now, monitor.region ?? camera.bounds());
@@ -362,6 +359,12 @@ function main(): void {
   const recordings = new RecordingsPanel(recorder, {
     toast: (text, action) => controls.showToast(text, action),
   });
+  /** After a run stopped (by hand, or at the size limit: `reason`): it is listed and kept. */
+  function recordingStopped(run: Run | null, reason?: string): void {
+    controls.setRecording(false);
+    recordings.render(true);
+    if (run) controls.showToast(`${run.name} saved: ${run.frames} frames${reason ? ` (${reason})` : ''}`);
+  }
 
   // Distance to equilibrium: KL between the kernel-smoothed particles and the Gibbs measure.
   const monitor = new EquilibriumMonitor(potential, particles);
@@ -1023,11 +1026,9 @@ function main(): void {
       recording: recorder.recording,
     });
     if (recorder.recording) {
-      if (recorder.tick(now)) {
-        controls.setRecording(false);
-        controls.showToast(`Recording stopped: size limit reached (${Math.round(recorder.maxBytes / 2 ** 20)} MB of raw data)`);
-      }
-      recordings.renderLive(now);
+      const full = recorder.tick(now);
+      if (full) recordingStopped(full, `size limit of ${Math.round(recorder.maxBytes / 2 ** 20)} MB reached`);
+      else recordings.renderLive(now);
     }
 
     // The 2D view is not drawn while the 3D view covers it completely. It is drawn by the GPU,

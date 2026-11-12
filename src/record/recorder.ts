@@ -371,7 +371,7 @@ export class Recorder {
     this.lastPsi = -Infinity;
     this.frameKey = '';
     this.psiKey = '';
-    this.tick(nowMs, true);
+    this.capture(run, nowMs, true);
     return run;
   }
 
@@ -379,7 +379,7 @@ export class Recorder {
   stop(nowMs: number): Run | null {
     const run = this.current;
     if (!run) return null;
-    this.tick(nowMs, true);
+    this.capture(run, nowMs, true); // the last frame (no limit check: that would stop again)
     run.stoppedAt = new Date();
     this.current = null;
     this.runs.unshift(run);
@@ -392,12 +392,18 @@ export class Recorder {
   }
 
   /**
-   * Records a frame and/or Ψ snapshot if due. Returns true if the run hit the memory limit and
-   * was stopped.
+   * Records a frame and/or Ψ snapshot if due. If the run reaches the size limit, it is stopped
+   * and kept like a run stopped by hand; it is returned then (null otherwise).
    */
-  tick(nowMs: number, force = false): boolean {
+  tick(nowMs: number, force = false): Run | null {
     const run = this.current;
-    if (!run) return false;
+    if (!run) return null;
+    this.capture(run, nowMs, force);
+    return run.bytes >= this.maxBytes ? this.stop(nowMs) : null;
+  }
+
+  /** Adds a frame and/or Ψ snapshot to `run` if due (or always with `force`). */
+  private capture(run: Run, nowMs: number, force: boolean): void {
     const { field, particles: ps } = this.src;
     const p = this.src.params();
     const wall = (nowMs - run.wallStart) / 1000;
@@ -463,12 +469,6 @@ export class Recorder {
       run.psiFrame.push(run.frames - 1);
       run.bytes += snap.byteLength;
     }
-
-    if (run.bytes >= this.maxBytes) {
-      this.stop(nowMs);
-      return true;
-    }
-    return false;
   }
 
   /** Adds a KL estimate to the current run. */

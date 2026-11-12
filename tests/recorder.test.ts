@@ -35,6 +35,29 @@ describe('npy writer', () => {
 });
 
 describe('Recorder', () => {
+  it('stops at the size limit and keeps the run (once, like a run stopped by hand)', async () => {
+    const field = new PotentialField({ cellSize: 0.04, cap: 5 });
+    const ps = new ParticleSystem(new Rng(2));
+    for (let i = 0; i < 50; i++) ps.add(i * 0.01, 0, 0);
+    const params = { sigma: 0.6, speed: 1, kernelVariance: 0.09, scheme: 'heun' as const, seed: 0, playing: true };
+    const rec = new Recorder({ field, particles: ps, params: () => params, maxBytes: 40_000 });
+
+    let now = 0;
+    rec.start(now, { x0: -1, y0: -1, x1: 1, y1: 1 });
+    let stopped = null;
+    for (let k = 0; k < 1000 && !stopped; k++) {
+      ps.advance(langevin(field, 0.6), 0.01);
+      now += 60;
+      stopped = rec.tick(now);
+    }
+    expect(stopped).not.toBeNull();
+    expect(rec.recording).toBe(false);
+    expect(rec.runs).toEqual([stopped]);
+    expect(stopped!.stoppedAt).toBeInstanceOf(Date);
+    expect(rec.tick(now + 60)).toBeNull(); // nothing more is recorded
+    expect((await stopped!.toNpz()).byteLength).toBeGreaterThan(0);
+  });
+
   it('records frames, Psi snapshots and KL and exports a consistent .npz', async () => {
     const field = new PotentialField({ cellSize: 0.04, cap: 5 });
     field.applyBrush(0, 0, -3, 0.6);
