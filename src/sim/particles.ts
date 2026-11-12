@@ -2,7 +2,15 @@ import { Rng } from './rng';
 import type { Process } from './process';
 import { DEFAULT_SCHEME, SCHEMES, type Scheme } from './schemes';
 
-export const MAX_PARTICLES = 2000;
+/**
+ * Most particles at once. Up to CPU_PARTICLES they are always integrated on the CPU (exact,
+ * double precision); larger ensembles go to the GPU where it can (see sim/gpu/).
+ */
+export const MAX_PARTICLES = 200_000;
+/** Ensembles up to this size are always integrated on the CPU. */
+export const CPU_PARTICLES = 2000;
+/** Trails are stored for the first this-many particles (a trail per particle of 200 000 would not fit). */
+export const TRAIL_PARTICLES = 2000;
 /** Number of stored trail points per particle. */
 export const TRAIL_LEN = 40;
 /** Simulated time between two stored trail points. */
@@ -72,10 +80,10 @@ export class ParticleSystem {
   readonly deathAt = new Float64Array(MAX_PARTICLES).fill(Number.NaN);
   /** Called after every step of `advance` (births and deaths); null = nothing. */
   events: StepEvents | null = null;
-  /** Ring buffers of past positions, TRAIL_LEN (x, y) slots per particle. */
-  readonly trail = new Float32Array(MAX_PARTICLES * TRAIL_LEN * 2);
-  /** Number of valid trail slots per particle. */
-  readonly trailCount = new Uint16Array(MAX_PARTICLES);
+  /** Ring buffers of past positions, TRAIL_LEN (x, y) slots per particle (the first TRAIL_PARTICLES). */
+  readonly trail = new Float32Array(TRAIL_PARTICLES * TRAIL_LEN * 2);
+  /** Number of valid trail slots per particle (the first TRAIL_PARTICLES; see `trailLength`). */
+  readonly trailCount = new Uint16Array(TRAIL_PARTICLES);
   /** Slot that holds the most recent trail point (shared by all particles). */
   trailHead = 0;
   /** Number of trail recordings so far (each one writes slot `trailHead` of every particle). */
@@ -113,6 +121,11 @@ export class ParticleSystem {
     return this.count >= MAX_PARTICLES;
   }
 
+  /** Number of stored trail points of particle i (0 for particles without a trail). */
+  trailLength(i: number): number {
+    return i < TRAIL_PARTICLES ? this.trailCount[i] : 0;
+  }
+
   add(x: number, y: number, color: number): boolean {
     if (this.count >= MAX_PARTICLES) return false;
     const i = this.count++;
@@ -120,7 +133,7 @@ export class ParticleSystem {
     this.y[i] = y;
     this.color[i] = color;
     this.id[i] = this.nextId++;
-    this.trailCount[i] = 0;
+    if (i < TRAIL_PARTICLES) this.trailCount[i] = 0;
     this.birthAt[i] = Number.NaN;
     this.deathAt[i] = Number.NaN;
     this.version++;
@@ -138,12 +151,19 @@ export class ParticleSystem {
       this.y[i] = this.y[last];
       this.color[i] = this.color[last];
       this.id[i] = this.id[last];
-      this.trailCount[i] = this.trailCount[last];
       this.birthAt[i] = this.birthAt[last];
       this.deathAt[i] = this.deathAt[last];
-      const n = TRAIL_LEN * 2;
-      this.trail.copyWithin(i * n, last * n, last * n + n);
-      this.trailLayout++;
+      if (i < TRAIL_PARTICLES) {
+        // The moved particle takes over the trail slot (it has a trail only if it had one).
+        if (last < TRAIL_PARTICLES) {
+          this.trailCount[i] = this.trailCount[last];
+          const n = TRAIL_LEN * 2;
+          this.trail.copyWithin(i * n, last * n, last * n + n);
+        } else {
+          this.trailCount[i] = 0;
+        }
+        this.trailLayout++;
+      }
     }
     this.version++;
   }
@@ -256,7 +276,7 @@ export class ParticleSystem {
       this.y[i] = r.y;
       this.color[i] = r.color;
       this.id[i] = r.id;
-      this.trailCount[i] = 0;
+      if (i < TRAIL_PARTICLES) this.trailCount[i] = 0;
       this.birthAt[i] = Number.NaN;
       this.deathAt[i] = Number.NaN;
       if (r.id >= this.nextId) this.nextId = r.id + 1;
@@ -295,19 +315,12 @@ export class ParticleSystem {
     workBudget = Infinity,
   ): number {
     if (!(T > 0)) return 0;
-    const pending = this.clockRemainder + T;
-    let n = Math.floor(pending / dt + 1e-9);
     // Only a finite budget (the live frame loop) limits the work per call.
     const costPerStep = Math.max(1, this.count) * this.scheme.driftEvals;
     const limit = Number.isFinite(workBudget)
       ? Math.max(1, Math.min(MAX_SUBSTEPS, Math.floor(workBudget / costPerStep)))
       : Infinity;
-    if (n > limit) {
-      n = limit;
-      this.clockRemainder = 0;
-    } else {
-      this.clockRemainder = Math.max(0, pending - n * dt);
-    }
+    const n = this.planSteps(T, dt, limit);
     const t0 = this.time;
     for (let s = 0; s < n; s++) {
       this.stepAt(process, dt, t0 + s * dt);
@@ -323,6 +336,44 @@ export class ParticleSystem {
     this.time += advanced;
     this.lastSubsteps = n;
     return advanced;
+  }
+
+  /**
+   * The number of steps of length dt that simulated time T (plus the time carried over) asks for,
+   * at most `maxSteps`; the time carried over to the next call is updated (if the steps were
+   * capped, the missing time is dropped). Used by `advance`, and by integrators elsewhere (the
+   * GPU), which then apply their result with `commitSteps`.
+   */
+  planSteps(T: number, dt: number, maxSteps = Infinity): number {
+    if (!(T > 0)) return 0;
+    const pending = this.clockRemainder + T;
+    let n = Math.floor(pending / dt + 1e-9);
+    if (n > maxSteps) {
+      n = maxSteps;
+      this.clockRemainder = 0;
+    } else {
+      this.clockRemainder = Math.max(0, pending - n * dt);
+    }
+    return n;
+  }
+
+  /**
+   * Takes the positions after `n` steps of length dt computed elsewhere (the GPU integrator), as
+   * interleaved (x, y) pairs: advances the time, and records a trail point if one is due.
+   */
+  commitSteps(n: number, dt: number, xy: ArrayLike<number>): void {
+    for (let i = 0, m = this.count; i < m; i++) {
+      this.x[i] = xy[2 * i];
+      this.y[i] = xy[2 * i + 1];
+    }
+    this.time += n * dt;
+    this.lastSubsteps = n;
+    this.version++;
+    this.trailClock += n * dt;
+    if (this.trailClock >= TRAIL_DT - 1e-12) {
+      this.trailClock %= TRAIL_DT;
+      this.recordTrail();
+    }
   }
 
   /** Number of sub-steps taken by the last `advance` call. */
@@ -349,7 +400,7 @@ export class ParticleSystem {
     this.trailHead = head;
     this.trailWrites++;
     const { x, y, trail, trailCount } = this;
-    for (let i = 0, n = this.count; i < n; i++) {
+    for (let i = 0, n = Math.min(this.count, TRAIL_PARTICLES); i < n; i++) {
       const k = (i * TRAIL_LEN + head) * 2;
       trail[k] = x[i];
       trail[k + 1] = y[i];

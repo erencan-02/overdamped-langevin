@@ -35,6 +35,8 @@ export class Chunk {
   readonly psi = new Float32Array(CHUNK * CHUNK);
   readonly gx = new Float32Array(CHUNK * CHUNK);
   readonly gy = new Float32Array(CHUNK * CHUNK);
+  /** Bumped whenever the nodal gradient of this chunk is recomputed (e.g. for copies on the GPU). */
+  version = 0;
   constructor(
     readonly cx: number,
     readonly cy: number,
@@ -609,6 +611,7 @@ export class PotentialField {
       for (let cx = i0 >> CHUNK_SHIFT; cx <= i1 >> CHUNK_SHIFT; cx++) {
         const c = this.getChunk(cx, cy);
         if (!c) continue;
+        c.version++;
         const { psi, gx, gy } = c;
         const baseI = cx << CHUNK_SHIFT;
         const baseJ = cy << CHUNK_SHIFT;

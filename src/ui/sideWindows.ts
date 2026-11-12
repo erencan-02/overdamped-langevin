@@ -166,6 +166,8 @@ function settings(): void {
   });
   kit.rangeField(body, { id: 'sigma', label: ['Diffusivity ', mathItalic('σ')], outputId: 'sigma-out' });
   kit.rangeField(body, { id: 'speed', label: 'Speed', outputId: 'speed-out' });
+  // Which integrator runs a large ensemble (GPU or CPU, and why), set by the frame loop.
+  kit.note(body, '', 'integrator-note').hidden = true;
 
   // Numerical scheme: three radio buttons (Controls wires them by data-scheme).
   const scheme = kit.group(body, 'field');

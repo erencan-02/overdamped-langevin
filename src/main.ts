@@ -17,6 +17,7 @@ import { createTutorial, Scenarios } from './app/scenarios';
 import { createSession } from './app/session';
 import { createStage } from './app/stage';
 import { SceneExport } from './export/sceneExport';
+import { GpuIntegrator } from './sim/gpu/gpuIntegrator';
 import { mountHelp } from './ui/help';
 import { buildSideWindows } from './ui/sideWindows';
 
@@ -33,6 +34,8 @@ function main(): void {
   const app = {} as App;
   app.core = createCore();
   app.graphics = new Graphics(app.core.state, app.core.potential, () => app.layout.resize());
+  app.gpu = new GpuIntegrator({ changed: () => {} }); // its state is shown by the frame loop
+  app.gpu.enable(app.core.state.gpu);
   ({ input: app.input, viewSwitch: app.viewSwitch } = createStage(app));
   app.actions = createActions(app);
   app.controls = createControls(app);
@@ -98,6 +101,7 @@ function exposeForDebugging(app: App): void {
       recorder: recording.recorder,
       session: app.session,
       playback: recording.playback,
+      gpu: app.gpu,
       get renderer() {
         return app.graphics.gpuRenderer;
       },

@@ -14,6 +14,7 @@ import type { Formulas } from './formulas';
 import type { Graphics } from './graphics';
 import type { Layout } from './layout';
 import type { Recording } from './recording';
+import type { GpuIntegrator } from '../sim/gpu/gpuIntegrator';
 import type { Scenarios } from './scenarios';
 
 /**
@@ -30,6 +31,8 @@ export interface App {
   core: Core;
   /** Drawing the 2D view on the GPU or the CPU, and the overlay (graphics.ts). */
   graphics: Graphics;
+  /** Large ensembles on the GPU: WebGPU compute shaders in a worker (sim/gpu/, created in main.ts). */
+  gpu: GpuIntegrator;
   /** Mouse input on the stage: brush, particles, panning (stage.ts). */
   input: InputController;
   /** 2D ↔ 3D view (stage.ts). */

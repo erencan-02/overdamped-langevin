@@ -18,6 +18,8 @@
  * The engine (~0.75 MB minified) is loaded on demand with `loadTexParser()`.
  */
 
+import { toWgsl } from '../sim/gpu/wgsl';
+
 type Json = unknown;
 
 export interface EvalContext {
@@ -49,6 +51,12 @@ export interface CompiledPotential {
    * itself: the renderer checks it against `value` before using it.
    */
   readonly glsl: { code: string; preamble: string } | null;
+  /**
+   * The formula and its partial derivatives (with respect to x, y, r and θ, as for `gradient`)
+   * as WGSL expressions in x, y, r, theta, t, sigma, for the GPU integrator (sim/gpu/); null if
+   * the GPU cannot evaluate it.
+   */
+  readonly wgsl: { value: string; dx: string; dy: string; dr: string; dtheta: string } | null;
   /** Ψ(t, xs[i], ys[i]) for i < n, into `out`. */
   value(xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array): void;
   /** ∂Ψ/∂x and ∂Ψ/∂y at (t, xs[i], ys[i]) for i < n, into gx and gy. */
@@ -225,12 +233,14 @@ function buildPotential(ce: Engine, compile: Compile, src: string, spec: Functio
   // (Substituting r = √(x² + y²) instead would hit the compiler issue mentioned above.)
   const spatial = ['x', 'y', 'r', 'theta'].filter((v) => psi.uses.has(v));
   const d: Record<string, CheckedFormula> = {};
+  const derivatives: Record<string, Boxed> = {};
   for (const v of spatial) {
     const dv = ce.box(['D', expr.json, v] as Parameters<Engine['box']>[0]).evaluate();
     if (!dv.isValid || hasHead(dv.json, UNRESOLVED_DERIVATIVE)) {
       throw new TexError(`${spec.name} must be differentiable: the gradient of this formula could not be derived.`);
     }
     d[v] = compileChecked(compile, dv);
+    derivatives[v] = dv;
   }
 
   const columns = (xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number) => {
@@ -256,6 +266,7 @@ function buildPotential(ce: Engine, compile: Compile, src: string, spec: Functio
 
   const potential: CompiledPotential = {
     glsl,
+    wgsl: formulaWgsl(expr, derivatives),
     variables: new Set([...psi.uses].filter((v) => POTENTIAL_SYMBOLS.has(v))),
     timeDependent: psi.uses.has('t'),
     usesSigma: psi.uses.has('sigma'),
@@ -351,6 +362,23 @@ interface FormulaSpec {
 }
 
 /** Parses LaTeX into a valid, scalar expression of the allowed symbols (or throws a TexError). */
+/** WGSL of a formula and of its partial derivatives (0 where it does not depend on a variable). */
+function formulaWgsl(expr: Boxed, derivatives: Record<string, Boxed>): CompiledPotential['wgsl'] {
+  try {
+    const of = (e: Boxed | undefined) => (e ? toWgsl(e.simplify().json) : '0.0');
+    const out = {
+      value: of(expr),
+      dx: of(derivatives.x),
+      dy: of(derivatives.y),
+      dr: of(derivatives.r),
+      dtheta: of(derivatives.theta),
+    };
+    return Object.values(out).every((c) => c !== null) ? (out as NonNullable<CompiledPotential['wgsl']>) : null;
+  } catch {
+    return null; // stays on the CPU
+  }
+}
+
 function readFormula(ce: Engine, src: string, spec: FormulaSpec): Boxed {
   const tex = src.trim();
   if (tex.length > 500) throw new TexError('The expression is too long (max. 500 characters).');

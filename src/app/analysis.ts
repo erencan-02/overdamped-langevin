@@ -110,6 +110,15 @@ export class Analysis {
     );
   }
 
+  /**
+   * What needs every single integrator step on the CPU now: births and deaths, and the open
+   * windows that follow paths (ergodicity, first passage). The GPU integrator waits for them.
+   */
+  stepHooks(): string[] {
+    const names = this.instruments.all.filter((i) => i.onStep && i.active).map((i) => i.title);
+    return this.birthDeath.active ? ['Birth / death', ...names] : names;
+  }
+
   /** Whether the Gibbs measure is the invariant measure (the equilibrium tools need it). */
   setGibbs(gibbs: boolean): void {
     this.monitor.gibbs = gibbs;

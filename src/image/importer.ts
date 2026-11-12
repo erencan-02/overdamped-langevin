@@ -22,6 +22,8 @@ export interface ImporterHooks {
   onError(message: string): void;
   /** Wraps each change of Ψ or of the particles (e.g. to make it one undo step). */
   edit?<T>(label: string, change: () => T): T;
+  /** How many particles an image becomes (default MAX_PARTICLES). */
+  particleCount?(): number;
 }
 
 const LOADING_TITLE: Record<ImportTarget, string> = {
@@ -226,12 +228,13 @@ export class ImageImporter {
   }
 
   /**
-   * Replaces all particles with MAX_PARTICLES new ones whose density follows the image
+   * Replaces all particles with new ones (see `particleCount`) whose density follows the image
    * darkness. Ψ is left as it is.
    */
   private applyParticles(image: DecodedImage, x0: number, yTop: number, inverted: boolean): number {
     const h = this.field.h;
-    const pts = sampleImagePoints(image, MAX_PARTICLES, {
+    const count = Math.min(MAX_PARTICLES, this.hooks.particleCount?.() ?? MAX_PARTICLES);
+    const pts = sampleImagePoints(image, count, {
       invert: inverted,
       random: this.random.uniform('images'),
     });

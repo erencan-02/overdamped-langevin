@@ -35,6 +35,7 @@ It is a static site with no backend, so it runs on GitHub Pages.
 | Spray particles | Particle mode, **Shift + drag** |
 | Spawn a grid of particles | Particle mode, **right-drag** a rectangle; spacing is set by *Grid spacing* in the panel |
 | Remove a particle | Particle mode, **right-click** it |
+| Large ensembles | Up to **200 000 particles** (e.g. a fine *Grid spacing* and a large rectangle, or an image → particles). Up to 2000 the CPU integrates them exactly as always (double precision, bit-for-bit reproducible); beyond that a WebGPU compute shader in a Web Worker does, in real time, with its own random numbers and in single precision. Every GPU kernel is first checked against the CPU at sample points. Windows that need every single step (*First passage*, *Ergodicity*, *Birth / death*) and formulas without a GPU form keep the CPU integrator (slower than real time for large ensembles); *Settings* says which one runs and why. Trails are drawn for the first 2000 particles |
 | Undo / redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>): brush strokes and other changes of Ψ, added and removed particles |
 | Pan | Hold the **mouse wheel** and drag (or **Alt + drag**) |
 | Zoom | **Scroll** |
@@ -344,6 +345,7 @@ src/
   ui/help.html        the help dialog (inserted at start by ui/help.ts)
   ui/plotDraw.ts      drawing of all plots (on screen and for export)
   export/             figure export (PNG/SVG), pictures and videos of the scene (MP4, GIF)
+  sim/gpu/            the GPU integrator: WGSL from formulas, the compute kernel, its worker and controller
   ui/tutorial.ts      generic guided tour (spotlight, text box, keys); its steps in ui/tutorialSteps.ts
 public/scenarios/     the course scenarios (JSON) and their index
 tests/                unit and statistical tests (Vitest)

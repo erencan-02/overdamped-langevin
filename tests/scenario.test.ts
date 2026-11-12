@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { MAX_PARTICLES } from '../src/sim/particles';
 import { loadTexParser, type TexParser } from '../src/analysis/latex';
 import { decodeScenario, encodeScenario, readHash, scenarioKey, toBase64Url } from '../src/scenario/codec';
 import { parseScenario, SCENARIO_FORMAT, type Scenario } from '../src/scenario/schema';
@@ -86,8 +87,14 @@ describe('the scenario schema', () => {
       { format: 'other' },
       { ...minimal, version: 'one' },
       { ...minimal, title: '' },
-      { ...minimal, particles: [{ kind: 'point', x: 0, y: 0, n: 5000 }] },
-      { ...minimal, particles: [{ kind: 'point', x: 0, y: 0, n: 1500 }, { kind: 'point', x: 0, y: 0, n: 1500 }] },
+      { ...minimal, particles: [{ kind: 'point', x: 0, y: 0, n: MAX_PARTICLES + 1 }] },
+      {
+        ...minimal,
+        particles: [
+          { kind: 'point', x: 0, y: 0, n: MAX_PARTICLES / 2 + 1 },
+          { kind: 'point', x: 0, y: 0, n: MAX_PARTICLES / 2 },
+        ],
+      },
       { ...minimal, particles: [{ kind: 'points', xs: [1, 2], ys: [1] }] },
       { ...minimal, particles: [{ kind: 'laser', n: 1 }] },
       { ...minimal, box: { x0: 1, y0: 0, x1: 0, y1: 1 } },

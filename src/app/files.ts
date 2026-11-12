@@ -5,6 +5,10 @@ import { BusyOverlay } from '../ui/busyOverlay';
 import { DropController } from '../ui/dropzone';
 import { usePaintedPotential } from './actions';
 import type { App } from './app';
+import { CPU_PARTICLES } from '../sim/particles';
+
+/** Particles an image becomes when the GPU integrator is ready. */
+const IMAGE_PARTICLES_GPU = 50_000;
 
 /**
  * Opening files: images (→ Ψ or → particles), recordings (.npz, played back) and scenarios
@@ -43,6 +47,8 @@ export class Files {
       },
       onError: (message) => controls().showToast(message),
       edit: (label, change) => history.run(label, change),
+      // Large pictures need the GPU integrator; on the CPU an image gives as many as before.
+      particleCount: () => (app.gpu.available ? IMAGE_PARTICLES_GPU : CPU_PARTICLES),
     });
 
     this.recordingInput.addEventListener('change', () => {

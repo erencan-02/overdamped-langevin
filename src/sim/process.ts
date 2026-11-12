@@ -13,6 +13,15 @@
  * is the overdamped Langevin equation, whose invariant measure is the Gibbs measure e^{−2Ψ/σ²}.
  */
 
+/** A formula and its partial derivatives (x, y, r, θ) as WGSL expressions (see gpu/wgsl.ts). */
+export interface FormulaWgsl {
+  value: string;
+  dx: string;
+  dy: string;
+  dr: string;
+  dtheta: string;
+}
+
 /** ∇Ψ for the drift −∇Ψ (the painted lattice, a formula, or an analytic test potential). */
 export interface DriftField {
   /** Writes ∇Ψ(x, y) into out[0], out[1] (at the current time). */
@@ -79,6 +88,8 @@ export interface Process {
 /** A coefficient given by a formula: values and exact gradient at many points (see latex.ts). */
 export interface Coefficient {
   readonly variables: ReadonlySet<string>;
+  /** The formula and its partial derivatives as WGSL, for the GPU integrator (null: CPU only). */
+  readonly wgsl?: FormulaWgsl | null;
   readonly timeDependent: boolean;
   readonly usesSigma: boolean;
   value(xs: Float64Array, ys: Float64Array, n: number, t: number, sigma: number, out: Float64Array): void;

@@ -9,6 +9,12 @@ import { type NpyArray, npyString, npzArchive } from './npz';
 
 /** Minimum real time between two recorded particle frames (20 frames per second at most). */
 const FRAME_INTERVAL_MS = 50;
+/**
+ * Positions are recorded at most this fast (bytes per ms of real time): large ensembles get fewer
+ * frames per second (100 000 particles: one per second) instead of filling the size limit in a
+ * moment. Up to 2000 particles nothing changes.
+ */
+const MAX_FRAME_BYTES_PER_MS = 2000;
 /** Minimum real time between two Ψ snapshots (Ψ changes every frame while painting or filming). */
 const PSI_INTERVAL_MS = 200;
 /** Ψ snapshots use at most this many lattice nodes (larger boxes are subsampled). */
@@ -412,7 +418,8 @@ export class Recorder {
     const pKey = `${field.revision}|${field.epoch}`;
     const psiDue = pKey !== this.psiKey && (force || nowMs - this.lastPsi >= PSI_INTERVAL_MS);
     const fKey = `${ps.version}|${p.sigma}|${p.speed}|${p.kernelVariance}|${p.scheme}|${p.seed}|${p.playing}|${p.potentialTex ?? ''}|${p.birthDeath}|${p.birthRate}|${p.deathRate}|${processKey(p.process)}`;
-    if (force || psiDue || (nowMs - this.lastFrame >= FRAME_INTERVAL_MS && fKey !== this.frameKey)) {
+    const interval = Math.max(FRAME_INTERVAL_MS, (ps.count * 20) / MAX_FRAME_BYTES_PER_MS);
+    if (force || psiDue || (nowMs - this.lastFrame >= interval && fKey !== this.frameKey)) {
       this.lastFrame = nowMs;
       this.frameKey = fKey;
       const n = ps.count;

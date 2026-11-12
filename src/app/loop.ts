@@ -1,5 +1,5 @@
 import { PALETTE } from '../config';
-import { DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES } from '../sim/particles';
+import { CPU_PARTICLES, DEFAULT_DT_MAX, DEFAULT_WORK_BUDGET, MAX_PARTICLES } from '../sim/particles';
 import type { App } from './app';
 import { changeDetector } from './watch';
 
@@ -61,13 +61,29 @@ export class Loop {
 
   private simulate(dt: number): void {
     const { state, particles, potential, sde } = this.app.core;
+    const gpu = this.app.gpu;
     // A time-dependent Ψ runs on even without particles; a formula that is still compiling waits.
     const moves = particles.count > 0 || potential.timeDependent || sde.coefficientsDependOnTime;
-    if (!state.playing || !moves || this.app.formulas.waiting()) return;
-    // Adapt the work budget so the simulation never takes more than ~SIM_MS_PER_FRAME, whatever
-    // the device or scheme.
+    if (!state.playing || !moves || this.app.formulas.waiting()) {
+      gpu.idle();
+      return;
+    }
+    const process = this.app.core.processNow();
+    // Large ensembles go to the GPU when it can take them (see sim/gpu/gpuIntegrator.ts).
+    const frame = {
+      particles,
+      process,
+      potential,
+      seed: state.seed,
+      scheme: state.scheme,
+      dt: DEFAULT_DT_MAX,
+      stepHooks: this.app.analysis.stepHooks(),
+    };
+    if (gpu.advance(frame, dt * state.speed)) return;
+    // On the CPU: adapt the work budget so the simulation never takes more than
+    // ~SIM_MS_PER_FRAME, whatever the device or scheme.
     const t0 = performance.now();
-    particles.advance(this.app.core.processNow(), dt * state.speed, DEFAULT_DT_MAX, this.workBudget);
+    particles.advance(process, dt * state.speed, DEFAULT_DT_MAX, this.workBudget);
     const elapsed = performance.now() - t0;
     const work = particles.lastWork;
     if (work > 1000 && elapsed > 0) {
@@ -97,6 +113,27 @@ export class Loop {
     });
     this.app.recording.frame(now);
   }
+
+  /** Settings: which integrator runs a large ensemble, and why not the GPU. */
+  private showIntegrator(): void {
+    const { particles, state } = this.app.core;
+    const gpu = this.app.gpu;
+    let text = '';
+    if (particles.count > CPU_PARTICLES && state.playing) {
+      const reason = gpu.lastReason;
+      text = gpu.usedLastFrame
+        ? `${particles.count} particles on the GPU (WebGPU, single precision).`
+        : `${particles.count} particles on the CPU, slower than real time${reason && reason !== 'small' ? `: ${reason}` : ''}.`;
+    }
+    if (text !== this.integratorText) {
+      this.integratorText = text;
+      this.integratorNote.textContent = text;
+      this.integratorNote.hidden = text === '';
+    }
+  }
+
+  private integratorText = '';
+  private readonly integratorNote = document.getElementById('integrator-note')!;
 
   private draw(now: number): void {
     const { app } = this;
@@ -152,6 +189,7 @@ export class Loop {
   private updateReadout(): void {
     const { state, particles, potential } = this.app.core;
     const { controls, input, viewSwitch } = this.app;
+    this.showIntegrator();
     controls.setPanning(input.panning);
     controls.setPlayAttention(!state.playing && particles.count > 0);
     // The point under the mouse: in 2D from the camera, in 3D on the surface (or none).

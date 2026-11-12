@@ -23,6 +23,7 @@ import {
   DirectionalLight,
   DoubleSide,
   DynamicDrawUsage,
+  IcosahedronGeometry,
   InstancedMesh,
   LineBasicMaterial,
   LineDashedMaterial,
@@ -43,7 +44,8 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PALETTE } from '../config';
 import type { PotentialField } from '../sim/field';
-import { MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
+import { CPU_PARTICLES, MAX_PARTICLES, type ParticleSystem } from '../sim/particles';
+import { dotScale } from '../view/dotScale';
 import { gridSpacing } from '../view/gridSpacing';
 import { HeightField } from './heightField';
 import type { CameraPose, Cursor3D, Formula3D, HeightSource, Rect, Scene3DView, WorldPick } from './types';
@@ -95,7 +97,10 @@ export class Scene3D implements Scene3DView {
   private readonly outline: LineLoop;
   /** Grid lines lying on the surface: minor, major and the two axes. */
   private readonly gridLines: LineSegments[];
+  /** Smooth spheres, for up to CPU_PARTICLES particles. */
   private readonly dots: InstancedMesh;
+  /** Low-poly spheres for large ensembles (created when first needed). */
+  private manyDots: InstancedMesh | null = null;
   private readonly palette = PALETTE.map((hex) => new Color(hex));
   private readonly m = new Matrix4();
   /** Cursor: 1σ ring (solid) and 2σ ring (dashed) of the brush, or the next particle's ring. */
@@ -196,7 +201,7 @@ export class Scene3D implements Scene3DView {
       this.surface.add(ring);
     }
 
-    this.dots = new InstancedMesh(new SphereGeometry(1, 20, 14), new MeshLambertMaterial(), MAX_PARTICLES);
+    this.dots = new InstancedMesh(new SphereGeometry(1, 20, 14), new MeshLambertMaterial(), CPU_PARTICLES);
     this.dots.instanceMatrix.setUsage(DynamicDrawUsage);
     this.dots.count = 0;
     this.dots.frustumCulled = false;
@@ -414,6 +419,7 @@ export class Scene3D implements Scene3DView {
     for (const l of this.gridLines) l.geometry.dispose();
     for (const r of this.rings) r.geometry.dispose();
     this.dots.dispose();
+    this.manyDots?.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss(); // give the GPU context back now, not when collected
   }
@@ -542,9 +548,15 @@ export class Scene3D implements Scene3DView {
   /** Spheres at (x, y, Ψ(x, y)), resting on the (relief-scaled) surface. */
   private updateParticles(): void {
     const ps = this.particles;
+    const n = ps.count;
+    if (n > CPU_PARTICLES) {
+      this.updateManyParticles();
+      return;
+    }
+    this.dots.visible = true;
+    if (this.manyDots) this.manyDots.visible = false;
     const r = this.particleRadius;
     const lift = this.heightScale * Math.max(1e-4, this.relief);
-    const n = ps.count;
     const { xs, ys, v } = this.points(n);
     xs.set(ps.x.subarray(0, n));
     ys.set(ps.y.subarray(0, n));
@@ -560,5 +572,62 @@ export class Scene3D implements Scene3DView {
     this.dots.count = ps.count;
     this.dots.instanceMatrix.needsUpdate = true;
     if (this.dots.instanceColor) this.dots.instanceColor.needsUpdate = true;
+  }
+
+  /** Large ensembles: smaller low-poly spheres, written straight into the instance buffers. */
+  private updateManyParticles(): void {
+    const ps = this.particles;
+    const n = ps.count;
+    if (!this.manyDots) {
+      const mesh = new InstancedMesh(new IcosahedronGeometry(1, 0), new MeshLambertMaterial(), MAX_PARTICLES);
+      mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      mesh.frustumCulled = false;
+      mesh.setColorAt(0, this.palette[0]); // allocates instanceColor
+      mesh.instanceColor!.setUsage(DynamicDrawUsage);
+      this.scene.add(mesh);
+      this.manyDots = mesh;
+    }
+    const mesh = this.manyDots;
+    this.dots.visible = false;
+    mesh.visible = true;
+    const r = this.particleRadius * dotScale(n);
+    const lift = this.heightScale * Math.max(1e-4, this.relief);
+    const { xs, ys, v } = this.points(n);
+    xs.set(ps.x.subarray(0, n));
+    ys.set(ps.y.subarray(0, n));
+    this.surfaceHeights(xs, ys, n, v);
+    const m = mesh.instanceMatrix.array as Float32Array;
+    const c = mesh.instanceColor!.array as Float32Array;
+    for (let i = 0; i < n; i++) {
+      // Scale r and translation (x, y, height): column-major 4 × 4.
+      const o = 16 * i;
+      m[o] = r;
+      m[o + 1] = 0;
+      m[o + 2] = 0;
+      m[o + 3] = 0;
+      m[o + 4] = 0;
+      m[o + 5] = r;
+      m[o + 6] = 0;
+      m[o + 7] = 0;
+      m[o + 8] = 0;
+      m[o + 9] = 0;
+      m[o + 10] = r;
+      m[o + 11] = 0;
+      m[o + 12] = ps.x[i];
+      m[o + 13] = ps.y[i];
+      m[o + 14] = v[i] * lift + r;
+      m[o + 15] = 1;
+      const col = this.palette[ps.color[i]] ?? this.palette[0];
+      c[3 * i] = col.r;
+      c[3 * i + 1] = col.g;
+      c[3 * i + 2] = col.b;
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.clearUpdateRanges();
+    mesh.instanceMatrix.addUpdateRange(0, 16 * n);
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor!.clearUpdateRanges();
+    mesh.instanceColor!.addUpdateRange(0, 3 * n);
+    mesh.instanceColor!.needsUpdate = true;
   }
 }

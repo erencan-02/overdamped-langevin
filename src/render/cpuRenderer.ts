@@ -1,7 +1,8 @@
 import type { DensityImage } from '../analysis/equilibrium';
 import { COLORMAP, hexToRgb, PALETTE } from '../config';
 import type { PotentialField } from '../sim/field';
-import { type ParticleSystem, TRAIL_LEN } from '../sim/particles';
+import { CPU_PARTICLES, type ParticleSystem, TRAIL_LEN, TRAIL_PARTICLES } from '../sim/particles';
+import { dotScale } from '../view/dotScale';
 import type { Camera } from '../view/camera';
 import { ARROW_FLOATS, arrowSpacing, buildArrows } from '../view/forceField';
 import { gridSpacing } from '../view/gridSpacing';
@@ -342,7 +343,7 @@ export class CpuRenderer {
       for (let c = 0; c < PALETTE.length; c++) {
         ctx.beginPath();
         let any = false;
-        for (let i = 0; i < ps.count; i++) {
+        for (let i = 0, n = Math.min(ps.count, TRAIL_PARTICLES); i < n; i++) {
           if (ps.color[i] !== c) continue;
           const stored = ps.trailCount[i];
           const k1 = Math.min(stored, k0 + per);
@@ -365,6 +366,10 @@ export class CpuRenderer {
   }
 
   private drawParticles(cam: Camera, ps: ParticleSystem, scale: number, W: number, H: number, fade: number): void {
+    if (ps.count > CPU_PARTICLES) {
+      this.drawManyParticles(cam, ps, scale, W, H, fade);
+      return;
+    }
     const ctx = this.ctx;
     const r = 5.5 * this.dpr;
     const ring = 1.8 * this.dpr;
@@ -392,7 +397,55 @@ export class CpuRenderer {
     for (let c = 0; c < PALETTE.length; c++) disks(r, PALETTE[c], c);
     ctx.globalAlpha = 1;
   }
+
+  /**
+   * Large ensembles: small squares written straight into a pixel buffer at CSS resolution, then
+   * drawn onto the canvas in one go (a canvas path with 200 000 shapes would take far too long).
+   */
+  private drawManyParticles(cam: Camera, ps: ParticleSystem, scale: number, W: number, H: number, fade: number): void {
+    const dpr = this.dpr;
+    const w = Math.max(1, Math.ceil(W / dpr));
+    const h = Math.max(1, Math.ceil(H / dpr));
+    if (!this.dots || this.dots.image.width !== w || this.dots.image.height !== h) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const image = ctx.createImageData(w, h);
+      this.dots = { canvas, ctx, image, pixels: new Uint32Array(image.data.buffer) };
+    }
+    const { canvas, ctx, image, pixels } = this.dots;
+    pixels.fill(0);
+    const side = Math.max(1, Math.round(2 * 5.5 * dotScale(ps.count) * 0.8));
+    const half = side / 2;
+    const k = scale / dpr; // CSS px per world unit
+    for (let i = 0; i < ps.count; i++) {
+      const x0 = Math.round(w / 2 + (ps.x[i] - cam.x) * k - half);
+      const y0 = Math.round(h / 2 - (ps.y[i] - cam.y) * k - half);
+      if (x0 >= w || y0 >= h || x0 + side <= 0 || y0 + side <= 0) continue;
+      const colour = DOT_COLOURS[ps.color[i]] ?? DOT_COLOURS[0];
+      const xa = Math.max(0, x0);
+      const xb = Math.min(w, x0 + side);
+      for (let y = Math.max(0, y0), yb = Math.min(h, y0 + side); y < yb; y++) pixels.fill(colour, y * w + xa, y * w + xb);
+    }
+    ctx.putImageData(image, 0, 0);
+    const out = this.ctx;
+    out.save();
+    out.globalAlpha = fade;
+    out.imageSmoothingEnabled = false;
+    out.drawImage(canvas, 0, 0, W, H);
+    out.restore();
+  }
+
+  private dots: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; image: ImageData; pixels: Uint32Array } | null = null;
 }
+
+/** The palette as opaque RGBA pixels (little-endian: 0xAABBGGRR). */
+const DOT_COLOURS = Uint32Array.from(PALETTE, (hex) => {
+  const [r, g, b] = hexToRgb(hex).map((c) => Math.round(c * 255));
+  return (0xff << 24) | (b << 16) | (g << 8) | r;
+});
 
 /** sRGB colour map (as PSI_COLOR_GLSL's psiRamp) at LUT_SIZE points of Ψ/cap ∈ [−1, 1], as bytes. */
 function buildLut(): Uint8ClampedArray {

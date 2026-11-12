@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { MAX_PARTICLES } from '../sim/particles'; // the largest count a scenario can ask for
 
 /**
  * Scenarios: a whole set-up of the app (process, potential, particles, view, open windows) plus
@@ -16,8 +17,6 @@ export const SCENARIO_FORMAT = 'langevin-dynamics-scenario';
 /** The current version. Older versions are migrated (see MIGRATIONS); newer ones are refused. */
 export const SCENARIO_VERSION = 1;
 
-/** Largest particle count a scenario can ask for (the simulation's limit). */
-const MAX_PARTICLES = 2000;
 
 const num = v.pipe(v.number(), v.finite());
 const coord = v.pipe(num, v.minValue(-1e4), v.maxValue(1e4));

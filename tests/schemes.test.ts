@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PotentialField } from '../src/sim/field';
-import { MAX_PARTICLES, ParticleSystem } from '../src/sim/particles';
+import { CPU_PARTICLES, ParticleSystem } from '../src/sim/particles';
 import { Rng } from '../src/sim/rng';
 import { type DriftField, SCHEMES, type SchemeId } from '../src/sim/schemes';
 import { langevin } from '../src/sim/process';
@@ -94,7 +94,7 @@ describe('numerical schemes', () => {
   it.each(ids)('%s reproduces free Brownian motion (Var = σ² t)', (id) => {
     const field = new PotentialField({ cellSize: 0.04, cap: 5 });
     const ps = new ParticleSystem(new Rng(9), SCHEMES[id]);
-    for (let i = 0; i < MAX_PARTICLES; i++) ps.add(0, 0, 0);
+    for (let i = 0; i < CPU_PARTICLES; i++) ps.add(0, 0, 0);
     const sigma = 0.7;
     for (let t = 0; t < 20; t++) ps.advance(langevin(field, sigma), 0.05);
     const v = variance(ps.x.subarray(0, ps.count));

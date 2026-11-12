@@ -1,6 +1,7 @@
 import { PALETTE_RGB } from '../config';
 import { CHUNK, type Chunk, chunkKey, type PotentialField } from '../sim/field';
-import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN } from '../sim/particles';
+import { MAX_PARTICLES, type ParticleSystem, TRAIL_LEN, TRAIL_PARTICLES } from '../sim/particles';
+import { dotScale } from '../view/dotScale';
 import type { Camera } from '../view/camera';
 import type { DriftField } from '../sim/process';
 import {
@@ -92,9 +93,9 @@ export class Renderer {
   private particleInstances = 0;
   private uploadedVersion = -1;
 
-  /** Trail ring buffer: RG32F texture, one row per particle, one column per ring slot. */
+  /** Trail ring buffer: RG32F texture, one row per particle with a trail, one column per ring slot. */
   private readonly ringTex: WebGLTexture;
-  private readonly column = new Float32Array(MAX_PARTICLES * 2);
+  private readonly column = new Float32Array(TRAIL_PARTICLES * 2);
   private uploadedWrites = -1;
   private uploadedLayout = -1;
   private headSlot = 0;
@@ -154,7 +155,7 @@ export class Renderer {
 
     this.ringTex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.ringTex);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, TRAIL_LEN, MAX_PARTICLES);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RG32F, TRAIL_LEN, TRAIL_PARTICLES);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -593,7 +594,7 @@ export class Renderer {
       d[k] = ps.x[i];
       d[k + 1] = ps.y[i];
       d[k + 2] = ps.color[i];
-      d[k + 3] = ps.trailCount[i];
+      d[k + 3] = ps.trailLength(i);
     }
     const gl = this.gl;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
@@ -607,7 +608,7 @@ export class Renderer {
    * removal or reset the whole buffer is sent once.
    */
   private uploadTrails(ps: ParticleSystem): void {
-    const n = ps.count;
+    const n = Math.min(ps.count, TRAIL_PARTICLES);
     const pending = ps.trailWrites - this.uploadedWrites;
     this.headSlot = ps.trailHead;
     if (pending === 0 && ps.trailLayout === this.uploadedLayout) return;
@@ -654,17 +655,18 @@ export class Renderer {
     gl.uniform1i(p.uniforms.u_len, TRAIL_LEN);
     gl.uniform1f(p.uniforms.u_width, 2.2 * this.dpr);
     gl.uniform1f(p.uniforms.u_alpha, 0.6 * fade);
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, TRAIL_LEN * 6, this.particleInstances);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, TRAIL_LEN * 6, Math.min(this.particleInstances, TRAIL_PARTICLES));
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   private drawParticles(cam: Camera, scale: number, W: number, H: number, fade: number): void {
     const gl = this.gl;
     const p = this.particleProg;
-    const dpr = this.dpr;
-    const radius = 5.5 * dpr;
-    const ring = 1.8 * dpr;
-    const halo = 3 * dpr;
+    // Smaller dots for large ensembles (unchanged up to 2000 particles).
+    const k = this.dpr * dotScale(this.particleInstances);
+    const radius = 5.5 * k;
+    const ring = 1.8 * k;
+    const halo = 3 * k;
     gl.useProgram(p.program);
     gl.bindVertexArray(this.particleVao);
     this.setView(p, cam, scale, W, H);

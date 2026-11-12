@@ -30,6 +30,7 @@ export function createActions(app: App): ControlActions {
       state.gpu = on;
       app.viewSwitch.setGpu(on); // without the GPU: 3D closes and releases its context
       graphics.useGpu(on);
+      app.gpu.enable(on); // large ensembles are integrated on the GPU only while it is on
       app.controls.setGpuInfo(graphics.gpuInfo.available, graphics.tip());
       sync();
       toast(on ? 'GPU on' : 'GPU off: everything is drawn on the CPU');

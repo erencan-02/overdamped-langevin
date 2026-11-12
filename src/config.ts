@@ -78,7 +78,7 @@ export const RANGES = {
   speed: [0.1, 5],
   brushRadius: [0.15, 3],
   brushStrength: [0.5, 30],
-  particleSpacing: [0.1, 3],
+  particleSpacing: [0.03, 3],
   kernelVariance: [0.0025, 4],
   birthRate: [0, 100],
   deathRate: [0, 100],
