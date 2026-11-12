@@ -6,6 +6,7 @@ import { CollapsiblePanel, formatOrDash as fmt } from '../ui/collapsiblePanel';
 import { FormulaInput } from '../ui/formulaInput';
 import * as kit from '../ui/panelKit';
 import { TimeSeriesPlot } from '../ui/timeSeriesPlot';
+import { type Rect, type RegionImage, RegionRaster } from '../view/regionRaster';
 import type { FrameContext, Instrument } from './instrument';
 
 /** The curve is sampled at most this often (real time). */
@@ -34,7 +35,12 @@ export class FirstPassageInstrument implements Instrument {
   private parser: TexParser | null = null;
   private loadStarted = false;
   private fn: CompiledObservable | null = null;
+  /** What g depends on besides x and y (its picture changes with them), and a version per formula. */
+  private fnUses = { psi: false, sigma: false };
+  private fnVersion = 0;
   private readonly ctx: EvalContext;
+  /** The target set A drawn on the scene (only while the window is open). */
+  private readonly raster = new RegionRaster();
 
   /** Arrival time by particle id (NaN: not arrived yet) for the cohort; empty: not started. */
   private readonly status = new Map<number, number>();
@@ -75,6 +81,7 @@ export class FirstPassageInstrument implements Instrument {
         ['outside r = 3', 'x^2 + y^2 - 9'],
       ],
     });
+    kit.note(parts.body, 'A is shaded on the scene while this window is open.');
     kit.caption(parts.body, 'Fraction of the particles that have reached A, over simulated time');
     const canvas = kit.plotCanvas(parts.body, 'Fraction arrived over time');
     this.plot = new TimeSeriesPlot(canvas, 'linear');
@@ -88,6 +95,8 @@ export class FirstPassageInstrument implements Instrument {
         const r = this.parser!.parse(tex);
         if (!r.ok) return r.message;
         this.fn = r.fn;
+        this.fnUses = { psi: r.usesPsi, sigma: r.usesSigma };
+        this.fnVersion++;
         this.reset();
         return null;
       },
@@ -118,6 +127,22 @@ export class FirstPassageInstrument implements Instrument {
 
   setOpen(open: boolean): void {
     this.panel.setOpen(open);
+  }
+
+  /**
+   * The target set A = {g > 0} as a tint for the scene, or null while the window is closed or
+   * g is not ready. Computed only on request, and only again when g, the view (beyond a margin)
+   * or what g depends on (Ψ, σ) changed.
+   */
+  targetRegion(view: Rect, pxPerUnit: number, psiRevision: string): RegionImage | null {
+    const fn = this.fn;
+    if (!this.panel.open || !fn) return null;
+    const sigma = this.actions.sigma();
+    const key = `${this.fnVersion}|${this.fnUses.sigma ? sigma : ''}|${this.fnUses.psi ? psiRevision : ''}`;
+    return this.raster.image(view, pxPerUnit, key, (xs, ys, n) => {
+      this.ctx.sigma = sigma;
+      return fn.evaluate(xs, ys, n, this.ctx);
+    });
   }
 
   /** Takes over a target set from outside (a scenario, a recording). */

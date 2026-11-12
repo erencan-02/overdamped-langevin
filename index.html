@@ -110,7 +110,14 @@
     </div>
 
     <!-- Parameters -->
-    <div class="left-col">
+    <div class="left-col" id="left-col">
+      <!-- One header folds all side windows away (the scene gets the room) -->
+      <button class="left-head card" id="left-toggle" type="button" aria-expanded="true" aria-controls="left-body">
+        <svg class="left-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10" /><path d="M18 7h2" /><circle cx="16" cy="7" r="2" /><path d="M4 17h4" /><path d="M12 17h8" /><circle cx="10" cy="17" r="2" /></svg>
+        <span class="analysis-title">Tools &amp; analysis</span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      <div class="left-body" id="left-body">
       <!-- Potential: painted lattice or a formula Ψ(t, x, y) with exact gradient -->
       <section class="analysis card collapsed" id="potential" aria-label="Potential">
         <button class="analysis-head" id="potential-toggle" type="button" aria-expanded="false" aria-controls="potential-body">
@@ -380,6 +387,7 @@
           </div>
         </div>
       </section>
+      </div>
     </div>
 
     <!-- Right column: camera preview and the Scenario window at the top, recordings, colour legend
@@ -391,6 +399,8 @@
         <span class="cam-badge" id="cam-badge"><span class="cam-dot"></span><span id="cam-badge-text">Live</span></span>
       </div>
 
+      <!-- At the bottom: recordings (once there are any) and the colour legend -->
+      <div class="right-bottom" id="right-bottom">
       <!-- Recorded runs -->
       <section class="recordings card collapsed" id="recordings" aria-label="Recordings">
         <button class="analysis-head" id="recordings-toggle" type="button" aria-expanded="false" aria-controls="recordings-body">
@@ -408,6 +418,7 @@
         <div class="legend-bar" id="legend-bar"></div>
         <div class="legend-ticks"><span id="legend-min"></span><span>Ψ = 0</span><span id="legend-max"></span></div>
         <div class="readout" id="readout"></div>
+      </div>
       </div>
     </div>
 

@@ -292,6 +292,15 @@ function main(): void {
   // The settings card collapses like the analysis windows (open at start).
   const settingsPanel = new CollapsiblePanel({ section: 'settings', toggle: 'settings-toggle', body: 'panel' }, () => {});
   settingsPanel.setOpen(true);
+  // All side windows on the left fold away under one header (open at start, except on phones,
+  // where they would cover the scene). Folded windows keep their state and keep measuring.
+  // On phones the side windows and the Scenario window would cover each other: opening one
+  // folds the other.
+  const narrow = () => window.matchMedia('(max-width: 640px)').matches;
+  const toolsPanel = new CollapsiblePanel({ section: 'left-col', toggle: 'left-toggle', body: 'left-body' }, (open) => {
+    if (open && narrow()) scenarioPanel.setOpen(false);
+  });
+  toolsPanel.setOpen(!narrow());
   // Formulas in the side panels (ρ̂_h in the KL window) are typeset with KaTeX, which is loaded
   // when that window is first opened.
   let sideMathLoaded = false;
@@ -646,6 +655,7 @@ function main(): void {
     showRect: (b) => camera.showRect(b.x0, b.y0, b.x1, b.y1),
     viewBounds: () => camera.bounds(),
     openPanels: (ids) => {
+      if (ids.length > 0) toolsPanel.setOpen(true); // the windows it opens are on the left
       for (const i of instruments.all) i.setOpen?.(ids.includes(i.id));
       processPanel.setOpen(ids.includes('process'));
       settingsPanel.setOpen(ids.includes('settings'));
@@ -666,6 +676,9 @@ function main(): void {
     capture: (o) => captureScenario(scenarioHost, o),
     readouts: () => instruments.readouts(),
     toast: (text) => controls.showToast(text),
+    opened: () => {
+      if (narrow()) toolsPanel.setOpen(false);
+    },
   });
 
   // ---------------------------------------------------------------- recordings & drag and drop
@@ -964,7 +977,7 @@ function main(): void {
     if (recorder.recording) {
       if (recorder.tick(now)) {
         controls.setRecording(false);
-        controls.showToast('Recording stopped: memory limit reached (400 MB of raw data)');
+        controls.showToast(`Recording stopped: size limit reached (${Math.round(recorder.maxBytes / 2 ** 20)} MB of raw data)`);
       }
       recordings.renderLive(now);
     }
@@ -1000,6 +1013,7 @@ function main(): void {
         selection: input.selection,
         analysisBox: monitor.active || observables.active || potentialPanel.open ? (monitor.region ?? monitor.box) : null,
         marker: ergodicity.marker(),
+        region: firstPassage.targetRegion(camera.bounds(), camera.scale, `${potential.revision}|${potential.epoch}`),
       });
     }
     const glsl = potential.compiled?.glsl;

@@ -39,6 +39,12 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 export const PALETTE_RGB: Float32Array = new Float32Array(PALETTE.flatMap((c) => hexToRgb(c)));
 
+/**
+ * A recording stops by itself when its raw data (positions, Ψ snapshots, time series) reaches
+ * this many bytes, so a forgotten recording cannot exhaust the tab's memory.
+ */
+export const RECORDING_LIMIT_BYTES = 50 * 1024 * 1024;
+
 /** Defaults for the user-adjustable parameters. */
 export const DEFAULTS = {
   sigma: 0.6,

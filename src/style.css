@@ -443,11 +443,58 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+/* The windows scroll below the header, which stays in place. */
+.left-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   overflow-y: auto;
   scrollbar-width: none;
 }
-.left-col::-webkit-scrollbar {
+.left-body::-webkit-scrollbar {
   display: none;
+}
+.left-body[hidden] {
+  display: none;
+}
+.left-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 14px;
+  border: 0;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.left-head .analysis-title {
+  flex: 1;
+}
+.left-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+.left-head .chev {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 2;
+  transition: transform 0.2s;
+}
+.left-col.collapsed .left-head .chev {
+  transform: rotate(-90deg);
 }
 .panel {
   flex: none;
@@ -653,6 +700,9 @@ input[type='range']:active::-webkit-slider-thumb {
 .recordings {
   flex: none;
   padding: 4px 6px 6px;
+}
+.recordings[hidden] {
+  display: none;
 }
 .recordings-body {
   display: flex;
@@ -945,19 +995,28 @@ input[type='range']:active::-webkit-slider-thumb {
   gap: 10px;
   pointer-events: none;
 }
-.right-col > .analysis,
-.right-col > .recordings {
+.right-col > .analysis {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
   pointer-events: auto;
 }
-/* Everything after the Scenario window sits at the bottom; the recordings keep their header. */
-.right-col > .recordings {
-  flex: none;
-  max-height: 45%;
+/* Recordings and the legend sit at the bottom; the recordings list scrolls if it is long. */
+.right-bottom {
+  flex: none; /* the Scenario window above gives way instead */
+  max-height: 55%;
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.right-bottom > .recordings {
+  flex: 0 1 auto;
+  min-height: 42px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  pointer-events: auto;
 }
 .legend {
   flex: none;
@@ -1637,7 +1696,7 @@ body.in-playback .hint {
     width: 220px;
     max-height: 45vh;
   }
-  .right-col > .recordings {
+  .right-bottom {
     margin-top: 0;
   }
   .left-col {

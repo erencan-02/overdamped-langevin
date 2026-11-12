@@ -16,6 +16,8 @@ export interface OverlayState {
   selection: GridSelection | null;
   /** Region of the equilibrium analysis (world units), drawn as a dashed box. */
   analysisBox: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** A set to tint (e.g. the target of the first-passage window): an image over a world rectangle. */
+  region?: { image: CanvasImageSource; x0: number; y0: number; x1: number; y1: number } | null;
   /** A particle to point out (e.g. the one an instrument follows), drawn as a ring. */
   marker?: { x: number; y: number; label: string } | null;
 }
@@ -57,6 +59,7 @@ export class Overlay {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
+    if (s.region) this.drawRegion(cam, s.region);
     if (s.grid) this.drawLabels(cam);
     if (s.analysisBox) this.drawAnalysisBox(cam, s.analysisBox);
     if (s.marker) this.drawMarker(cam, s.marker);
@@ -167,6 +170,16 @@ export class Overlay {
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(58, 155, 220, 0.9)';
     ctx.fillText('KL box', clamp(x0 + 5, 4, this.w - 50), clamp(y0 + 4, 4, this.h - 14));
+    ctx.restore();
+  }
+
+  private drawRegion(cam: Camera, r: { image: CanvasImageSource; x0: number; y0: number; x1: number; y1: number }): void {
+    const ctx = this.ctx;
+    const x0 = cam.toScreenX(r.x0);
+    const y0 = cam.toScreenY(r.y1); // the image's top row is the largest y
+    ctx.save();
+    ctx.imageSmoothingEnabled = true; // soft edges instead of grid cells
+    ctx.drawImage(r.image, x0, y0, cam.toScreenX(r.x1) - x0, cam.toScreenY(r.y0) - y0);
     ctx.restore();
   }
 

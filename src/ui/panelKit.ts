@@ -24,8 +24,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /**
- * A collapsed card in a column (default: the left one), before the element with id `before`
- * (default: Settings; at the end if it is not in that column).
+ * A collapsed card in a column (default: the side windows on the left, `#left-body`), before
+ * the element with id `before` (default: Settings; at the end if it is not in that column).
  */
 export function createPanel(opts: { id: string; title: string; label: string; before?: string; column?: string }): PanelParts {
   const ids = { section: opts.id, toggle: `${opts.id}-toggle`, body: `${opts.id}-body` };
@@ -46,8 +46,8 @@ export function createPanel(opts: { id: string; title: string; label: string; be
   body.id = ids.body;
   body.hidden = true;
   section.append(head, body);
-  const column = document.querySelector(opts.column ?? '.left-col');
-  if (!column) throw new Error(`Missing ${opts.column ?? '.left-col'}`);
+  const column = document.querySelector(opts.column ?? '#left-body');
+  if (!column) throw new Error(`Missing ${opts.column ?? '#left-body'}`);
   const before = document.getElementById(opts.before ?? 'settings');
   column.insertBefore(section, before && before.parentElement === column ? before : null);
   return { section, body, value, ids };

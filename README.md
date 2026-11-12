@@ -221,7 +221,7 @@ changed), the simulated and wall-clock time of every frame, σ, speed, kernel va
 play state per frame, snapshots of Ψ on the lattice over the KL box (up to 5 Hz, whenever Ψ
 changed), the KL time series with its floor, h, particle count and box, and the observable
 time series (mean, CI half width, exact value, particle count and the LaTeX of f). Recording stops by
-itself at 400 MB of raw data; runs live in the browser tab until downloaded or deleted.
+itself at 50 MB of raw data (`RECORDING_LIMIT_BYTES` in `src/config.ts`); runs live in the browser tab until downloaded or deleted.
 
 **The process.** The schemes see the SDE only through a small interface (`Process` in
 `src/sim/process.ts`): a batched drift $b(t,x)$, diagonal diffusion coefficients $s_1, s_2$ (and

@@ -1,4 +1,4 @@
-import { CELL_SIZE, PALETTE, PALETTE_RGB, PSI_CAP } from '../config';
+import { CELL_SIZE, PALETTE, PALETTE_RGB, PSI_CAP, RECORDING_LIMIT_BYTES } from '../config';
 import type { EquilibriumSample } from '../analysis/equilibrium';
 import type { ObservableSample } from '../analysis/observable';
 import type { Box } from '../analysis/kde';
@@ -13,8 +13,6 @@ const FRAME_INTERVAL_MS = 50;
 const PSI_INTERVAL_MS = 200;
 /** Ψ snapshots use at most this many lattice nodes (larger boxes are subsampled). */
 const MAX_PSI_NODES = 200_000;
-/** Recording stops automatically when the raw data reaches this size. */
-export const MAX_RUN_BYTES = 400 * 1024 * 1024;
 
 const SCHEME_CODES: Record<SchemeId, number> = { heun: 0, 'euler-maruyama': 1, milstein: 2 };
 
@@ -334,6 +332,8 @@ export interface RecorderSources {
   params(): RecordedParams;
   /** Full settings snapshot stored in the metadata (optional). */
   settings?(): Record<string, unknown>;
+  /** Size of the raw data at which a recording stops by itself (default RECORDING_LIMIT_BYTES). */
+  maxBytes?: number;
 }
 
 /**
@@ -351,7 +351,12 @@ export class Recorder {
   private psiKey = '';
   private runIndex = 0;
 
-  constructor(private readonly src: RecorderSources) {}
+  /** A recording stops by itself when its raw data reaches this many bytes. */
+  maxBytes: number;
+
+  constructor(private readonly src: RecorderSources) {
+    this.maxBytes = src.maxBytes ?? RECORDING_LIMIT_BYTES;
+  }
 
   get recording(): boolean {
     return this.current !== null;
@@ -459,7 +464,7 @@ export class Recorder {
       run.bytes += snap.byteLength;
     }
 
-    if (run.bytes >= MAX_RUN_BYTES) {
+    if (run.bytes >= this.maxBytes) {
       this.stop(nowMs);
       return true;
     }

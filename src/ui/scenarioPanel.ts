@@ -70,10 +70,12 @@ export class ScenarioPanel {
       capture(o: CaptureOptions): Scenario;
       readouts(): Record<string, number>;
       toast(text: string): void;
+      /** The window was opened (e.g. to fold other windows away on small screens). */
+      opened?(): void;
     },
   ) {
     // At the top right, apart from the analysis windows on the left.
-    const parts = kit.createPanel({ id: 'scenario', title: 'Scenario', label: 'Scenario', before: 'recordings', column: '.right-col' });
+    const parts = kit.createPanel({ id: 'scenario', title: 'Scenario', label: 'Scenario', before: 'right-bottom', column: '.right-col' });
     this.value = parts.value;
     const body = parts.body;
 
@@ -173,6 +175,7 @@ export class ScenarioPanel {
       if (open) {
         void this.loadLibrary();
         this.loadMath();
+        this.actions.opened?.();
       }
     });
     this.panel.setOpen(false);
