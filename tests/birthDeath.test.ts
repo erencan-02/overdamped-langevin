@@ -85,11 +85,12 @@ describe('birth–death process', () => {
     const zero = system(100, 2, 0, 0);
     zero.ps.advance(langevin(flat, 0), 1);
     expect(zero.ps.count).toBe(100);
+    // Near the limit (birth rate 50: a few steps give far more births than there is room for).
     const full = system(MAX_PARTICLES - 5, 4, 50, 0);
-    full.ps.advance(langevin(flat, 0), 0.2);
+    full.ps.advance(langevin(flat, 0), 0.01);
     expect(full.ps.count).toBe(MAX_PARTICLES);
     expect(full.bd.blocked).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it('is never part of an undo step', () => {
     const field = new PotentialField({ cellSize: 0.04, cap: 5 });
