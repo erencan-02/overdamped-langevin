@@ -68,13 +68,14 @@ async function moments(page: Page) {
   });
 }
 
-function expectOu(m: Awaited<ReturnType<typeof moments>>, label: string): void {
+/** Stationary variance σ²/(2k) per coordinate (k = 2), within 2.5 %. */
+function expectOu(m: Awaited<ReturnType<typeof moments>>, label: string, variance = 0.25): void {
   expect(m.n, label).toBe(N);
   expect(m.bad, label).toBe(0);
   expect(Math.abs(m.mx), label).toBeLessThan(0.01);
   expect(Math.abs(m.my), label).toBeLessThan(0.01);
-  expect(Math.abs(m.vx / 0.25 - 1), `${label} Var x = ${m.vx}`).toBeLessThan(0.025);
-  expect(Math.abs(m.vy / 0.25 - 1), `${label} Var y = ${m.vy}`).toBeLessThan(0.025);
+  expect(Math.abs(m.vx / variance - 1), `${label} Var x = ${m.vx}`).toBeLessThan(0.025);
+  expect(Math.abs(m.vy / variance - 1), `${label} Var y = ${m.vy}`).toBeLessThan(0.025);
 }
 
 for (const scheme of ['heun', 'euler-maruyama', 'milstein']) {
@@ -87,11 +88,14 @@ for (const scheme of ['heun', 'euler-maruyama', 'milstein']) {
   });
 }
 
-test('the painted lattice on the GPU: a painted bowl gives the same variance', async ({ page }) => {
+test('the painted lattice on the GPU: a painted bowl gives the exact variance', async ({ page }) => {
   const errors = watchErrors(page);
-  await start(page, { potentialMode: 'painted', sigma: 1, scheme: 'heun', speed: 2 }, true);
+  // The painted lattice is capped at |Ψ| ≤ 5, so the painted bowl is only 5 deep: with σ = 1 a
+  // few particles in 100 000 escape over its rim within t = 4 (rate ∝ e^{−2·5/σ²}) and then
+  // diffuse freely. With σ = 0.7 escapes are ~3·10⁴ times rarer; the variance is σ²/(2k) = 0.1225.
+  await start(page, { potentialMode: 'painted', sigma: 0.7, scheme: 'heun', speed: 2 }, true);
   await runOnGpu(page, 4);
-  expectOu(await moments(page), 'lattice');
+  expectOu(await moments(page), 'lattice', 0.1225);
   expect(errors).toEqual([]);
 });
 

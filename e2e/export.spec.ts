@@ -112,7 +112,8 @@ test('picture of the scene, video (MP4 or WebM) and GIF', async ({ page }) => {
 
   // Video: the chip shows the time; Stop saves the file.
   await menu(page, 'record-mp4');
-  await expect(page.locator('.video-chip')).toBeVisible();
+  // The encoder library is loaded on first use, which can take a while on a busy machine.
+  await expect(page.locator('.video-chip')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.video-chip')).toContainText('Video 0:01', { timeout: 10_000 });
   const video = await download(page, () => page.locator('.video-chip button').click());
   await expect(page.locator('.video-chip')).toBeHidden();
