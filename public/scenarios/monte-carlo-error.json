@@ -1,0 +1,23 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Monte Carlo error",
+  "description": "400 particles drawn from the stationary law of the Ornstein–Uhlenbeck process $dX_t = -X_t\\,dt + \\sigma\\,dW_t$ (σ = 1): each coordinate is $\\mathcal{N}(0, \\frac12)$, so $f(X) = |X|^2$ is exponentially distributed with mean 1 and variance 1. The Observable window shows the particle mean $\\bar f_N$ with its 95 % confidence interval $\\bar f_N \\pm 1.96\\,s_N/\\sqrt{N}$ from the central limit theorem, and the exact value $\\int f\\,d\\pi = 1$ (dashed). No time-stepping bias matters here: the error is purely statistical (course notes, §1.4 and §5.2.2).",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{x^2 + y^2}{2}", "sigma": 1 },
+    "analysis": { "observable": "x^2 + y^2" }
+  },
+  "particles": [{ "kind": "gaussian", "x": 0, "y": 0, "sx": 0.7071, "n": 400 }],
+  "box": { "x0": -5, "y0": -4, "x1": 5, "y1": 4 },
+  "view": { "x": 0, "y": 0, "scale": 60 },
+  "panels": ["observable", "settings"],
+  "play": true,
+  "questions": [
+    { "text": "What is the variance of $f(X) = |X|^2$ under the stationary law?", "kind": "number", "answer": 1, "tolerance": 0.05 },
+    { "text": "Half-width of the 95 % confidence interval with N = 400 (theory, or read it in the Observable window)?", "kind": "number", "answer": 0.098, "tolerance": 0.02 },
+    { "text": "Predict the half-width for N = 1600 particles.", "kind": "number", "answer": 0.049, "tolerance": 0.006 },
+    { "text": "How many particles are needed for a half-width of 0.01?", "kind": "number", "answer": 38416, "tolerance": 0.05, "relative": true },
+    { "text": "Add particles with the Particles tool (right-drag a rectangle, fine grid spacing) and check your prediction. Why do particles placed on a grid make the estimate worse for a while?" },
+    { "text": "Watch the curve for a while: about how often does the band miss the dashed line? What should that fraction be?" }
+  ]
+}

@@ -1,10 +1,15 @@
 [
   { "id": "brownian-motion", "title": "Brownian motion", "topic": "√t scaling, quadratic variation" },
+  { "id": "ito-lemma", "title": "Itô's lemma", "topic": "E[exp(Wₜ)] = exp(t/2), not 1" },
   { "id": "ornstein-uhlenbeck", "title": "Ornstein–Uhlenbeck", "topic": "stationary variance σ²/2k" },
+  { "id": "geometric-brownian-motion", "title": "Geometric Brownian motion", "topic": "mean-square vs. almost-sure stability" },
+  { "id": "backward-kolmogorov", "title": "Backward Kolmogorov", "topic": "v(x, t) = E[f(Xₜ) | X₀ = x]" },
   { "id": "invariant-measure", "title": "Invariant measure", "topic": "Fokker–Planck, Gibbs density" },
   { "id": "ergodicity", "title": "Ergodicity", "topic": "time vs. ensemble averages" },
   { "id": "metastability", "title": "Metastability", "topic": "Kramers / Arrhenius escape law" },
   { "id": "numerical-schemes", "title": "Numerical schemes", "topic": "strong vs. weak order" },
+  { "id": "monte-carlo-error", "title": "Monte Carlo error", "topic": "confidence intervals, 1/√N" },
+  { "id": "rare-events", "title": "Rare events", "topic": "relative error of tail probabilities" },
   { "id": "stochastic-resonance", "title": "Stochastic resonance", "topic": "a tilting double well with noise" },
   { "id": "birth-death", "title": "Births and deaths", "topic": "branching, reaction terms" }
 ]

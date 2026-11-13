@@ -1,0 +1,22 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Backward Kolmogorov equation",
+  "description": "The Ornstein–Uhlenbeck process $dX_t = -X_t\\,dt + \\sigma\\,dW_t$ ($\\Psi = \\frac{x^2 + y^2}{2}$, σ = 1) with all 2000 particles started at one point, $x = (2, 0)$. The particle mean of $f(X_t)$ is then a Monte Carlo estimate of $v(x, t) = \\mathbb{E}[f(X_t) \\mid X_0 = x]$, the solution of the backward Kolmogorov equation $\\partial_t v = -\\nabla\\Psi\\cdot\\nabla v + \\frac{\\sigma^2}{2}\\Delta v$ with $v(x, 0) = f(x)$ (course notes, §4.4.2 and §5.2.3). Here $f(x) = x_1^2$, and exactly $v(x, t) = x_1^2 e^{-2t} + \\frac{\\sigma^2}{2}(1 - e^{-2t})$. Press play and step with → to stop at a given time.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{x^2 + y^2}{2}", "sigma": 1, "speed": 0.5 },
+    "analysis": { "observable": "x^2" }
+  },
+  "particles": [{ "kind": "point", "x": 2, "y": 0, "n": 2000 }],
+  "box": { "x0": -6, "y0": -4.5, "x1": 6, "y1": 4.5 },
+  "view": { "x": 0, "y": 0, "scale": 55 },
+  "panels": ["observable", "settings"],
+  "questions": [
+    { "text": "Pause at $t = 1$. Particle mean of $(X^1_t)^2$, i.e. $v((2, 0), 1)$?", "kind": "number", "answer": 0.974, "tolerance": 0.08 },
+    { "text": "What does $v(x, t)$ converge to as $t \\to \\infty$, whatever the starting point?", "kind": "number", "answer": 0.5, "tolerance": 0.05 },
+    { "text": "The dashed line is $\\int f\\,d\\pi$ under the stationary (Gibbs) law. How is it related to the limit of $v(x, t)$?" },
+    { "text": "Check that the exact $v(x, t)$ above solves $\\partial_t v = -x_1\\,\\partial_{x_1} v + \\frac12\\,\\partial_{x_1 x_1} v$." },
+    { "text": "To get $v$ at every $x$ with this method you need one run per starting point. When is that still better than solving the PDE on a grid? (Think of dimension and of needing only a few points.)" },
+    { "text": "Duality: the forward (Fokker–Planck) and backward equations give the same $\\mathbb{E} f(X_t)$. Which object does each one evolve: the density or the test function?" }
+  ]
+}

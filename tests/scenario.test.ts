@@ -39,7 +39,7 @@ describe('the course scenarios', () => {
   it('are listed in the index, one file each', () => {
     const index = read('index.json') as { id: string; title: string }[];
     expect(index.map((e) => `${e.id}.json`).sort()).toEqual([...FILES].sort());
-    expect(index).toHaveLength(8);
+    expect(index).toHaveLength(13);
   });
 
   it.each(FILES)('%s is valid and all its formulas compile', (file) => {

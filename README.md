@@ -167,16 +167,23 @@ checked against a value *the app measures* (an instrument readout such as `first
 - **Answers** stay in the browser (localStorage, per scenario) and can be downloaded as a JSON file
   with each answer and whether it was correct.
 
-The course scenarios live in `public/scenarios/` (one file each, listed in `index.json`):
+The course scenarios live in `public/scenarios/` (one file each, listed in `index.json`). Five of them
+(Itô's lemma, geometric Brownian motion, backward Kolmogorov, Monte Carlo error, rare events) follow
+G. Samaey's course notes *Numerical methods for stochastic simulation and integration* (2025):
 
 | Scenario | What it explores |
 | --- | --- |
 | [Brownian motion](https://erencan-02.github.io/overdamped-langevin/#scenario=brownian-motion) | Ψ = 0, a point cloud: how does the width grow? (√t scaling, quadratic variation) |
+| [Itô's lemma](https://erencan-02.github.io/overdamped-langevin/#scenario=ito-lemma) | E e^{W_t} against the ordinary chain rule's answer 1 (Itô's lemma, exponential martingale) |
 | [Ornstein–Uhlenbeck](https://erencan-02.github.io/overdamped-langevin/#scenario=ornstein-uhlenbeck) | Ψ = k r²/2: does the cloud keep spreading? (stationary variance σ²/2k) |
+| [Geometric Brownian motion](https://erencan-02.github.io/overdamped-langevin/#scenario=geometric-brownian-motion) | dX = λX dt + μX dW: paths go to 0 while E X² explodes (mean-square vs. almost-sure stability) |
+| [Backward Kolmogorov](https://erencan-02.github.io/overdamped-langevin/#scenario=backward-kolmogorov) | all particles from one point: E[f(X_t) ∣ X₀ = x] as the solution of the backward equation |
 | [Invariant measure](https://erencan-02.github.io/overdamped-langevin/#scenario=invariant-measure) | a double well, ρ̂ₕ against e^{−2Ψ/σ²} (Fokker–Planck, Gibbs density) |
 | [Ergodicity](https://erencan-02.github.io/overdamped-langevin/#scenario=ergodicity) | one particle over a long time against many at one instant |
 | [Metastability](https://erencan-02.github.io/overdamped-langevin/#scenario=metastability) | mean time to cross the barrier against σ (Kramers / Arrhenius) |
 | [Numerical schemes](https://erencan-02.github.io/overdamped-langevin/#scenario=numerical-schemes) | Euler–Maruyama, Heun and Milstein with multiplicative noise (strong vs. weak order) |
+| [Monte Carlo error](https://erencan-02.github.io/overdamped-langevin/#scenario=monte-carlo-error) | the 95 % confidence interval and its 1/√N law (central limit theorem) |
+| [Rare events](https://erencan-02.github.io/overdamped-langevin/#scenario=rare-events) | a tail probability of 0.2 %: the relative error of plain Monte Carlo, and why importance sampling |
 | [Stochastic resonance](https://erencan-02.github.io/overdamped-langevin/#scenario=stochastic-resonance) | a slowly tilting double well plus noise |
 | [Births and deaths](https://erencan-02.github.io/overdamped-langevin/#scenario=birth-death) | N(t) against N₀e^{(λ−μ)t} and the spread between runs (branching, reaction terms) |
 

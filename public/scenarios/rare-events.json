@@ -1,0 +1,24 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Rare events",
+  "description": "2000 particles from the stationary law of the Ornstein–Uhlenbeck process $dX_t = -X_t\\,dt + \\sigma\\,dW_t$ (σ = 1), so $X^1 \\sim \\mathcal{N}(0, \\frac12)$. The Observable is the indicator $\\mathbf{1}_{x_1 > 2}$: its mean estimates the small probability $p = P(X^1 > 2)$, and the dashed line is the exact value. For a rare event the relative error of plain Monte Carlo is $\\sqrt{(1 - p)/(Np)}$, which is why importance sampling simulates a biased SDE $dY = (a + b\\alpha)\\,dt + b\\,dW$ and reweights every path with the Girsanov weight $w = \\exp(-\\frac12\\int|\\alpha|^2 dt - \\int\\alpha\\,dW)$ (course notes, §5.1.4.4 and §5.2.4.2).",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "\\frac{x^2 + y^2}{2}", "sigma": 1, "speed": 2 },
+    "analysis": { "observable": "\\mathbf{1}_{x > 2}" }
+  },
+  "particles": [{ "kind": "gaussian", "x": 0, "y": 0, "sx": 0.7071, "n": 2000 }],
+  "box": { "x0": -4, "y0": -3.5, "x1": 4, "y1": 3.5 },
+  "view": { "x": 0, "y": 0, "scale": 70 },
+  "panels": ["observable", "settings"],
+  "play": true,
+  "questions": [
+    { "text": "Compute $p = P(X^1 > 2)$ exactly (a Gaussian tail).", "kind": "number", "answer": 0.00234, "tolerance": 0.1, "relative": true },
+    { "text": "About how many of the 2000 particles are in the event at any moment?", "kind": "number", "answer": 4.7, "tolerance": 1 },
+    { "text": "Relative standard error $\\sqrt{(1-p)/(Np)}$ of the estimate with N = 2000?", "kind": "number", "answer": 0.46, "tolerance": 0.04 },
+    { "text": "How many particles would plain Monte Carlo need for a relative error of 10 %?", "kind": "number", "answer": 42656, "tolerance": 0.05, "relative": true },
+    { "text": "Watch the estimate jump. Why is the confidence interval of the window misleading here (look at how it is computed from few nonzero values)?" },
+    { "text": "Importance sampling: which constant bias drift α would you choose so that about half of the biased particles end up beyond $x_1 = 2$? What happens to the weights if α is much too large?" },
+    { "text": "With the GPU (Settings shows the integrator) you can simulate 50 000 particles. Add them with the Particles tool and compare the estimate with the exact value." }
+  ]
+}

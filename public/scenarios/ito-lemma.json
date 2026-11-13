@@ -1,0 +1,22 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Itô's lemma",
+  "description": "Brownian motion $X_t = \\sigma W_t$ (no potential), all particles at the origin, and the test function $f(x) = e^{x}$. The ordinary chain rule would give $d\\,e^{W_t} = e^{W_t}\\,dW_t$, a martingale with constant mean 1. Itô's lemma adds the second-order term: $d\\,e^{\\sigma W_t} = \\sigma e^{\\sigma W_t}\\,dW_t + \\frac{\\sigma^2}{2}e^{\\sigma W_t}\\,dt$, so $\\mathbb{E}\\,e^{\\sigma W_t} = e^{\\sigma^2 t/2}$ (course notes, §4.1.2.3; compare Remark 3.28). Press play and step with → to stop at a given time.",
+  "settings": {
+    "physics": { "potentialMode": "formula", "potentialTex": "0", "sigma": 1, "speed": 0.5 },
+    "analysis": { "observable": "e^{x}" }
+  },
+  "particles": [{ "kind": "point", "x": 0, "y": 0, "n": 2000 }],
+  "box": { "x0": -10, "y0": -7, "x1": 10, "y1": 7 },
+  "view": { "x": 0, "y": 0, "scale": 45 },
+  "panels": ["observable", "settings"],
+  "questions": [
+    { "text": "What does the ordinary chain rule predict for $\\mathbb{E}\\,e^{W_t}$ at every $t$?", "kind": "number", "answer": 1, "tolerance": 0.01 },
+    { "text": "Pause at $t = 1$. What is the particle mean of $e^{X^1_t}$?", "kind": "number", "answer": 1.649, "tolerance": 0.15 },
+    { "text": "Which formula fits $\\mathbb{E}\\,e^{W_t}$?", "kind": "choice", "choices": ["1", "e^(t/2)", "e^t", "1 + t"], "answer": "e^(t/2)" },
+    { "text": "Restart with σ = 0.5. Value of $\\mathbb{E}\\,e^{X^1_1}$ now?", "kind": "number", "answer": 1.133, "tolerance": 0.05 },
+    { "text": "Which function of $W_t$ and $t$ is a martingale, so that its mean stays at 1? Use Itô's lemma to check that its $dt$ term vanishes." },
+    { "text": "The band (95 % confidence interval) gets wider with time although the number of particles stays the same. Why? (Look at the variance of $e^{W_t}$.)" }
+  ]
+}

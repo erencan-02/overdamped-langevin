@@ -1,0 +1,34 @@
+{
+  "format": "langevin-dynamics-scenario",
+  "version": 1,
+  "title": "Geometric Brownian motion",
+  "description": "The test equation of stability theory, $dX_t = \\lambda X_t\\,dt + \\mu X_t\\,dW_t$, for each coordinate, with $\\lambda = \\frac14$ and $\\mu = \\sigma = 1$ (Drift & noise window: $u = \\lambda x$, $s = \\sigma x$; no potential). All 2000 particles start at $(1, 1)$. The exact solution is $X_t = X_0\\,e^{(\\lambda - \\mu^2/2)t + \\mu W_t}$, so $\\mathbb{E}X_t = X_0 e^{\\lambda t}$ and $\\mathbb{E}X_t^2 = X_0^2 e^{(2\\lambda + \\mu^2)t}$. The SDE is mean-square stable if $\\lambda + \\frac{\\mu^2}{2} < 0$ and asymptotically stable (almost surely) if $\\lambda - \\frac{\\mu^2}{2} < 0$ (course notes, §4.2.3). Press play; step with → to stop at a given time.",
+  "settings": {
+    "physics": {
+      "potentialMode": "formula",
+      "potentialTex": "0",
+      "sigma": 1,
+      "speed": 0.5,
+      "scheme": "milstein",
+      "extraDrift": true,
+      "driftU1": "\\frac{x}{4}",
+      "driftU2": "\\frac{y}{4}",
+      "noiseFormula": true,
+      "noiseS1": "\\sigma x",
+      "noiseS2": "\\sigma y"
+    },
+    "analysis": { "observable": "x" }
+  },
+  "particles": [{ "kind": "point", "x": 1, "y": 1, "n": 2000 }],
+  "box": { "x0": -2, "y0": -2, "x1": 100, "y1": 100 },
+  "view": { "x": 3, "y": 2, "scale": 60 },
+  "panels": ["observable", "process", "settings"],
+  "questions": [
+    { "text": "Pause at $t = 1$. What is the particle mean of $X^1_t$ (the Observable)?", "kind": "number", "answer": 1.284, "tolerance": 0.12 },
+    { "text": "Is this SDE mean-square stable, i.e. does $\\mathbb{E}X_t^2 \\to 0$?", "kind": "choice", "choices": ["yes", "no"], "answer": "no" },
+    { "text": "Is it asymptotically stable, i.e. does $X_t \\to 0$ for almost every path?", "kind": "choice", "choices": ["yes", "no"], "answer": "yes" },
+    { "text": "Type $\\mathbf{1}_{x < 1}$ as the test function and run to $t = 4$. Which fraction of the particles is below 1 (the median of $X_4$ is $e^{-1}$)?", "kind": "number", "answer": 0.69, "tolerance": 0.04 },
+    { "text": "Most particles shrink towards 0, yet the mean grows like $e^{t/4}$ and the second moment like $e^{3t/2}$. Explain how both can be true, and what this means for estimating $\\mathbb{E}X_t^2$ with a few thousand particles." },
+    { "text": "Set the drift to $u = -x$ (λ = −1). Which kind of stability holds now? Check it in the simulation." }
+  ]
+}
